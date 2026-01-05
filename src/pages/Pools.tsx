@@ -4,11 +4,11 @@ import Footer from "@/components/Footer";
 import { Search, Plus, ChevronDown, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AddLiquidityModal from "@/components/AddLiquidityModal";
 import CreatePoolModal from "@/components/CreatePoolModal";
 import { usePoolData } from "@/hooks/usePoolData";
-import { getChainName } from "@/config/chains";
+import { useNetwork } from "@/contexts/NetworkContext";
 
 const POOLS_DATA = [
   { id: 1, token0: "ETH", token1: "USDC", network: "Ethereum", feeTier: "0.05%", apr: "42.87%", tvl: "$2,326,158", volume24h: "$68,924,061", type: "V3" },
@@ -44,8 +44,18 @@ const Pools = () => {
   const [addLiquidityOpen, setAddLiquidityOpen] = useState(false);
   const [createPoolOpen, setCreatePoolOpen] = useState(false);
 
-  // Fetch real pool data from backend
+  // Get current network from context
+  const { selectedNetwork: currentNetwork } = useNetwork();
+
+  // Fetch real pool data from backend for current network
   const { pools, totalShards, chainName, isLoading, error, refetch } = usePoolData();
+
+  // Refetch pools when network changes
+  useEffect(() => {
+    if (currentNetwork) {
+      refetch();
+    }
+  }, [currentNetwork, refetch]);
 
   // Transform pools to display format
   const displayPools = pools.map((pool, index) => {
@@ -56,7 +66,7 @@ const Pools = () => {
       id: index + 1,
       token0: token0Symbol,
       token1: token1Symbol,
-      network: getChainName(pool.chainId || 11155931),
+      network: currentNetwork?.displayName || chainName,
       feeTier: '0.25%', // SAMM default fee tier
       apr: '0%', // TODO: Calculate from stats
       tvl,

@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap } from "lucide-react";
+import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { useAccount, useChainId } from "wagmi";
+import { Address } from "viem";
 import TokenInput from "./TokenInput";
 import TokenSelectModal, { Token } from "./TokenSelectModal";
 import { Button } from "./ui/button";
 import { sammApi } from "@/services/sammApi";
 import { useToast } from "@/hooks/use-toast";
-import { riseChain } from "@/config/chains";
+import { useNetwork } from "@/contexts/NetworkContext";
 import { commonTokens } from "@/config/tokens";
+import { useTokenApproval } from "@/hooks/useTokenApproval";
+import { useSwapExecution } from "@/hooks/useSwapExecution";
+import { getCrossPoolRouter } from "@/config/contracts";
 
 const EnhancedSwapCard = () => {
   const { toast } = useToast();
+  const { selectedNetwork } = useNetwork();
+  const { address: userAddress, isConnected } = useAccount();
+  const chainId = useChainId();
+
   const [fromValue, setFromValue] = useState("");
   const [toValue, setToValue] = useState("");
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
@@ -19,24 +28,80 @@ const EnhancedSwapCard = () => {
   const [quoteData, setQuoteData] = useState<any>(null);
   const [routeInfo, setRouteInfo] = useState<string>("");
 
-  // Get RiseChain tokens
-  const riseChainTokens = commonTokens[riseChain.id] || [];
+  // Get tokens for selected network
+  const networkTokens = selectedNetwork ? commonTokens[selectedNetwork.chainId] || [] : [];
 
   const [fromToken, setFromToken] = useState({
-    symbol: riseChainTokens[3]?.symbol || "USDC",
-    icon: riseChainTokens[3]?.icon || "💲",
+    symbol: networkTokens[3]?.symbol || "USDC",
+    icon: networkTokens[3]?.icon || "💲",
     balance: "0.00",
-    address: riseChainTokens[3]?.address || "",
-    decimals: riseChainTokens[3]?.decimals || 6,
+    address: networkTokens[3]?.address || "",
+    decimals: networkTokens[3]?.decimals || 6,
   });
 
   const [toToken, setToToken] = useState({
-    symbol: riseChainTokens[4]?.symbol || "USDT",
-    icon: riseChainTokens[4]?.icon || "💵",
+    symbol: networkTokens[4]?.symbol || "USDT",
+    icon: networkTokens[4]?.icon || "💵",
     balance: "0.00",
-    address: riseChainTokens[4]?.address || "",
-    decimals: riseChainTokens[4]?.decimals || 6,
+    address: networkTokens[4]?.address || "",
+    decimals: networkTokens[4]?.decimals || 6,
   });
+
+  // Check if token is native (doesn't need approval)
+  const isNativeToken = (address: string) => {
+    return !address || address === "0x0000000000000000000000000000000000000000";
+  };
+
+  const needsTokenApproval = !isNativeToken(fromToken.address);
+
+  // Get router address for approval
+  const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
+
+  // Calculate amount needed for approval
+  const amountNeeded = fromValue && fromToken.decimals
+    ? BigInt(Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)))
+    : 0n;
+
+  // Token approval hook
+  const {
+    needsApproval,
+    approveToken,
+    isApproving,
+    approvalState,
+  } = useTokenApproval({
+    tokenAddress: fromToken.address as Address,
+    spenderAddress: routerAddress,
+    amountNeeded,
+    enabled: needsTokenApproval && isConnected && !!fromValue,
+  });
+
+  // Swap execution hook
+  const { executeSwap, swapState, isLoading: isSwapping, reset: resetSwap } = useSwapExecution();
+
+  // Reset tokens when network changes
+  useEffect(() => {
+    if (selectedNetwork && networkTokens.length > 0) {
+      setFromToken({
+        symbol: networkTokens[3]?.symbol || networkTokens[0]?.symbol || "USDC",
+        icon: networkTokens[3]?.icon || networkTokens[0]?.icon || "💲",
+        balance: "0.00",
+        address: networkTokens[3]?.address || networkTokens[0]?.address || "",
+        decimals: networkTokens[3]?.decimals || networkTokens[0]?.decimals || 6,
+      });
+      setToToken({
+        symbol: networkTokens[4]?.symbol || networkTokens[1]?.symbol || "USDT",
+        icon: networkTokens[4]?.icon || networkTokens[1]?.icon || "💵",
+        balance: "0.00",
+        address: networkTokens[4]?.address || networkTokens[1]?.address || "",
+        decimals: networkTokens[4]?.decimals || networkTokens[1]?.decimals || 6,
+      });
+      // Clear quote when network changes
+      setFromValue("");
+      setToValue("");
+      setQuoteData(null);
+      setRouteInfo("");
+    }
+  }, [selectedNetwork]);
 
   // Fetch quote when amount changes
   useEffect(() => {
@@ -49,7 +114,25 @@ const EnhancedSwapCard = () => {
     }
   }, [fromValue, fromToken.address, toToken.address]);
 
+  // Reset swap state when tokens or values change
+  useEffect(() => {
+    if (swapState === 'success' || swapState === 'error') {
+      resetSwap();
+    }
+  }, [fromToken.address, toToken.address, fromValue]);
+
+
+
   const fetchQuote = async () => {
+    if (!selectedNetwork) {
+      toast({
+        title: "Network Not Selected",
+        description: "Please select a network first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -57,7 +140,8 @@ const EnhancedSwapCard = () => {
       const amountInSmallestUnit = (parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
       
       console.log('Fetching quote:', {
-        chain: 'risechain',
+        chain: selectedNetwork.name,
+        chainId: selectedNetwork.chainId,
         amount: amountInSmallestUnit,
         fromToken: fromToken.symbol,
         fromAddress: fromToken.address,
@@ -65,9 +149,9 @@ const EnhancedSwapCard = () => {
         toAddress: toToken.address
       });
       
-      // Try to get quote from backend
+      // Try to get quote from backend using network name
       const quote = await sammApi.getSwapQuote(
-        'risechain',
+        selectedNetwork.name,
         amountInSmallestUnit,
         fromToken.address,
         toToken.address
@@ -135,7 +219,7 @@ const EnhancedSwapCard = () => {
   };
 
   const handleTokenSelect = (token: Token) => {
-    const selectedToken = riseChainTokens.find(t => t.symbol === token.symbol);
+    const selectedToken = networkTokens.find(t => t.symbol === token.symbol);
     if (!selectedToken) return;
 
     const tokenData = {
@@ -164,6 +248,78 @@ const EnhancedSwapCard = () => {
     return `1 ${fromToken.symbol} = ${rate.toFixed(6)} ${toToken.symbol}`;
   };
 
+  /**
+   * Handle swap execution
+   * Two-step process: approve token (if needed) → execute swap
+   */
+  const handleSwap = async () => {
+    if (!isConnected) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to continue",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!fromToken.address || !toToken.address || !quoteData) {
+      toast({
+        title: "Invalid Swap",
+        description: "Please ensure all fields are filled",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Step 1: Approve token if needed
+      if (needsTokenApproval && needsApproval) {
+        await approveToken();
+        toast({
+          title: "Approval Pending",
+          description: "Please sign the approval transaction in your wallet",
+        });
+        return; // User will click swap again after approval completes
+      }
+
+      // Step 2: Execute swap
+      await executeSwap({
+        fromToken: fromToken.address as Address,
+        toToken: toToken.address as Address,
+        amountIn: fromValue,
+        amountOut: toValue,
+        fromDecimals: fromToken.decimals,
+        toDecimals: toToken.decimals,
+        quoteData,
+      });
+    } catch (error: any) {
+      console.error('Swap failed:', error);
+      // Error toast is already shown by the hooks
+    }
+  };
+
+  // Get button text based on current state
+  const getButtonText = () => {
+    if (!isConnected) return "Connect Wallet";
+    if (!fromValue || !toValue) return "Enter an amount";
+    if (loading) return "Fetching quote...";
+    if (needsTokenApproval && needsApproval) return `Approve ${fromToken.symbol}`;
+    if (isApproving) return "Approving...";
+    if (swapState === 'signing') return "Sign in wallet...";
+    if (swapState === 'confirming' || isSwapping) return "Confirming...";
+    if (swapState === 'success') return "Swap Successful!";
+    return "Swap";
+  };
+
+  // Button should be disabled during loading or transaction states
+  const isButtonDisabled =
+    !fromValue ||
+    loading ||
+    !toValue ||
+    isApproving ||
+    isSwapping ||
+    swapState === 'confirming';
+
   return (
     <>
       <div className="w-full max-w-[420px] mx-auto">
@@ -174,7 +330,7 @@ const EnhancedSwapCard = () => {
               <h2 className="text-xl font-semibold text-foreground">Swap</h2>
               <span className="px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium flex items-center gap-1">
                 <Zap className="w-3 h-3" />
-                RiseChain
+                {selectedNetwork?.displayName || "Loading..."}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -276,19 +432,61 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
+          {/* Transaction Status Indicator */}
+          {swapState === 'confirming' && (
+            <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <div className="flex items-center gap-2 text-sm text-blue-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Confirming transaction...</span>
+              </div>
+            </div>
+          )}
+
+          {swapState === 'success' && (
+            <div className="mt-4 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+              <div className="flex items-center gap-2 text-sm text-green-500">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Swap completed successfully!</span>
+              </div>
+            </div>
+          )}
+
+          {swapState === 'error' && (
+            <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2 text-red-500">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Transaction failed</span>
+                </div>
+                <Button
+                  onClick={() => {
+                    resetSwap();
+                    handleSwap();
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Swap Action Button */}
-          <Button 
-            variant="swap" 
-            size="xl" 
+          <Button
+            variant="swap"
+            size="xl"
             className="w-full mt-5 liquid-metal-cursor"
             onMouseMove={handleMouseMove}
-            disabled={!fromValue || loading || !toValue}
+            onClick={handleSwap}
+            disabled={isButtonDisabled}
             style={{
               '--mouse-x': `${mousePos.x}%`,
               '--mouse-y': `${mousePos.y}%`,
             } as React.CSSProperties}
           >
-            {loading ? "Fetching quote..." : fromValue && toValue ? "Connect Wallet to Swap" : "Enter an amount"}
+            {getButtonText()}
           </Button>
 
           {/* c-smaller-better indicator */}

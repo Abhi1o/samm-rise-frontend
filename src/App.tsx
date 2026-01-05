@@ -10,6 +10,7 @@ import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { wagmiConfig } from "@/config/web3";
 import { getRainbowKitTheme } from "@/config/rainbowkit-theme";
 import { riseChain } from "@/config/chains";
+import { NetworkProvider } from "@/contexts/NetworkContext";
 import Index from "./pages/Index";
 import Pools from "./pages/Pools";
 import NotFound from "./pages/NotFound";
@@ -48,18 +49,20 @@ const App = () => (
       <QueryClientProvider client={queryClient}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <RainbowKitWrapper>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/pools" element={<Pools />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </TooltipProvider>
+            <NetworkProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/pools" element={<Pools />} />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </BrowserRouter>
+              </TooltipProvider>
+            </NetworkProvider>
           </RainbowKitWrapper>
         </ThemeProvider>
       </QueryClientProvider>

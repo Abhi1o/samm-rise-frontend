@@ -1,37 +1,29 @@
-import { Wallet, Menu, X, ChevronDown } from "lucide-react";
+import { Wallet, Menu, X, ChevronDown, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
-import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
+import { useAccount } from "wagmi";
 import { formatAddress } from "@/utils/formatters";
+import { useNetwork } from "@/contexts/NetworkContext";
 import { chainMetadata } from "@/config/chains";
-
-const NETWORKS = [
-  { name: "Ethereum", icon: "⟠", color: "bg-blue-500", chainId: mainnet.id },
-  { name: "Arbitrum", icon: "🔵", color: "bg-blue-600", chainId: arbitrum.id },
-  { name: "Optimism", icon: "🔴", color: "bg-red-500", chainId: optimism.id },
-  { name: "Polygon", icon: "🟣", color: "bg-purple-500", chainId: polygon.id },
-  { name: "Base", icon: "🔵", color: "bg-blue-400", chainId: base.id },
-];
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
   const { isConnected } = useAccount();
-  const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { selectedNetwork, availableNetworks, isLoading, switchNetwork } = useNetwork();
 
-  // Get current network from chainId
-  const selectedNetwork = NETWORKS.find(n => n.chainId === chainId) || NETWORKS[0];
+  // Get current network metadata
+  const currentNetworkMeta = selectedNetwork ? chainMetadata[selectedNetwork.chainId] : null;
+  const networkIcon = currentNetworkMeta?.icon || "🚀";
+  const networkColor = currentNetworkMeta?.color || "bg-orange-500";
+  const networkName = selectedNetwork?.displayName || "Loading...";
 
   // Handle network switching
-  const handleNetworkSwitch = (network: typeof NETWORKS[0]) => {
-    if (isConnected && switchChain) {
-      switchChain({ chainId: network.chainId });
-    }
+  const handleNetworkSwitch = async (chainId: number) => {
+    await switchNetwork(chainId);
     setNetworkDropdownOpen(false);
   };
 
@@ -75,33 +67,52 @@ const Header = () => {
               <div className="relative">
                 <button
                   onClick={() => setNetworkDropdownOpen(!networkDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors"
+                  disabled={isLoading}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors disabled:opacity-50"
                 >
-                  <div className={`w-5 h-5 rounded-full ${selectedNetwork.color} flex items-center justify-center text-xs`}>
-                    {selectedNetwork.icon}
-                  </div>
-                  <span className="text-sm font-medium">{selectedNetwork.name}</span>
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <div className={`w-5 h-5 rounded-full ${networkColor} flex items-center justify-center text-xs`}>
+                      {networkIcon}
+                    </div>
+                  )}
+                  <span className="text-sm font-medium">{networkName}</span>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
-                {networkDropdownOpen && (
+                {networkDropdownOpen && !isLoading && (
                   <>
                     <div 
                       className="fixed inset-0 z-[998]" 
                       onClick={() => setNetworkDropdownOpen(false)}
                     />
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-xl z-[999] overflow-hidden">
-                      {NETWORKS.map((network) => (
-                        <button
-                          key={network.name}
-                          onClick={() => handleNetworkSwitch(network)}
-                          className="w-full px-4 py-2.5 text-left hover:bg-secondary/50 transition-colors flex items-center gap-2"
-                        >
-                          <div className={`w-5 h-5 rounded-full ${network.color} flex items-center justify-center text-xs`}>
-                            {network.icon}
-                          </div>
-                          <span>{network.name}</span>
-                        </button>
-                      ))}
+                    <div className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-xl z-[999] overflow-hidden">
+                      {availableNetworks.map((network) => {
+                        const meta = chainMetadata[network.chainId];
+                        const isSelected = network.chainId === selectedNetwork?.chainId;
+                        return (
+                          <button
+                            key={network.chainId}
+                            onClick={() => handleNetworkSwitch(network.chainId)}
+                            className={`w-full px-4 py-3 text-left hover:bg-secondary/50 transition-colors flex items-center gap-3 ${
+                              isSelected ? 'bg-secondary/30' : ''
+                            }`}
+                          >
+                            <div className={`w-6 h-6 rounded-full ${meta?.color || 'bg-gray-500'} flex items-center justify-center text-sm`}>
+                              {meta?.icon || '🌐'}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium">{network.displayName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {network.status.totalShards} pools
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <div className="w-2 h-2 rounded-full bg-primary" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -181,15 +192,18 @@ const Header = () => {
                 <div className="flex items-center gap-2 mt-2">
                   <ThemeToggle />
                   <select
-                    value={selectedNetwork.name}
+                    value={selectedNetwork?.chainId || ''}
                     onChange={(e) => {
-                      const network = NETWORKS.find(n => n.name === e.target.value);
-                      if (network) handleNetworkSwitch(network);
+                      const chainId = parseInt(e.target.value);
+                      if (chainId) handleNetworkSwitch(chainId);
                     }}
-                    className="flex-1 px-3 py-2 rounded-xl bg-secondary/50 border border-border text-sm"
+                    disabled={isLoading}
+                    className="flex-1 px-3 py-2 rounded-xl bg-secondary/50 border border-border text-sm disabled:opacity-50"
                   >
-                    {NETWORKS.map((network) => (
-                      <option key={network.name} value={network.name}>{network.name}</option>
+                    {availableNetworks.map((network) => (
+                      <option key={network.chainId} value={network.chainId}>
+                        {network.displayName}
+                      </option>
                     ))}
                   </select>
                 </div>
