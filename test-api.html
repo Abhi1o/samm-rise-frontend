@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAMM API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #333;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #00ff00;
+            color: #000;
+        }
+        pre {
+            background: #000;
+            padding: 10px;
+            border: 1px solid #00ff00;
+            overflow-x: auto;
+        }
+        .error {
+            color: #ff0000;
+        }
+        .success {
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>SAMM API Test</h1>
+    
+    <div>
+        <button onclick="testHealth()">Test Health</button>
+        <button onclick="testChains()">Test Chains</button>
+        <button onclick="testShards()">Test Shards</button>
+        <button onclick="testSwap()">Test Swap (USDC→USDT)</button>
+    </div>
+    
+    <div id="output"></div>
+    
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const output = document.getElementById('output');
+        
+        function log(message, isError = false) {
+            const pre = document.createElement('pre');
+            pre.className = isError ? 'error' : 'success';
+            pre.textContent = message;
+            output.appendChild(pre);
+        }
+        
+        async function testHealth() {
+            output.innerHTML = '';
+            log('Testing /health endpoint...');
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                log(JSON.stringify(data, null, 2));
+            } catch (error) {
+                log(`Error: ${error.message}`, true);
+            }
+        }
+        
+        async function testChains() {
+            output.innerHTML = '';
+            log('Testing /api/chains endpoint...');
+            try {
+                const response = await fetch(`${API_URL}/api/chains`);
+                const data = await response.json();
+                log(JSON.stringify(data, null, 2));
+            } catch (error) {
+                log(`Error: ${error.message}`, true);
+            }
+        }
+        
+        async function testShards() {
+            output.innerHTML = '';
+            log('Testing /api/risechain/shards endpoint...');
+            try {
+                const response = await fetch(`${API_URL}/api/risechain/shards`);
+                const data = await response.json();
+                log(JSON.stringify(data, null, 2));
+            } catch (error) {
+                log(`Error: ${error.message}`, true);
+            }
+        }
+        
+        async function testSwap() {
+            output.innerHTML = '';
+            log('Testing swap: 1 USDC → USDT');
+            log('Token addresses:');
+            log('  USDC: 0x3FfDe07200eE114f0b173505735563bd93D7814f');
+            log('  USDT: 0x23dd84CBc68474BA537d76e11D29239a2CB9754F');
+            log('  Amount: 1000000 (1 USDC with 6 decimals)');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/risechain/swap/best-shard`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amountOut: '1000000',
+                        tokenIn: '0x3FfDe07200eE114f0b173505735563bd93D7814f',
+                        tokenOut: '0x23dd84CBc68474BA537d76e11D29239a2CB9754F'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    log(`Error: ${JSON.stringify(error, null, 2)}`, true);
+                    return;
+                }
+                
+                const data = await response.json();
+                log(JSON.stringify(data, null, 2));
+                
+                // Calculate human-readable amounts
+                const amountIn = parseFloat(data.bestShard.amountIn) / 1000000;
+                const amountOut = parseFloat(data.bestShard.amountOut) / 1000000;
+                log(`\nHuman readable: ${amountIn.toFixed(6)} USDC → ${amountOut.toFixed(6)} USDT`);
+            } catch (error) {
+                log(`Error: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

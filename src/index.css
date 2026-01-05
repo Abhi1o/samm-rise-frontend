@@ -1,0 +1,431 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Liquid Metal + Orange DEX Design System */
+
+@layer base {
+  :root {
+    /* Light mode - Clean professional look */
+    --background: 220 20% 97%;
+    --foreground: 220 25% 12%;
+
+    /* Cards with clean white */
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 12%;
+
+    /* Orange primary - slightly darker for light mode contrast */
+    --primary: 24 95% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Light secondary - subtle gray-blue */
+    --secondary: 220 15% 90%;
+    --secondary-foreground: 220 25% 15%;
+
+    /* Muted light */
+    --muted: 220 15% 93%;
+    --muted-foreground: 220 15% 40%;
+
+    /* Orange accent */
+    --accent: 24 95% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Light borders - visible but subtle */
+    --border: 220 15% 82%;
+    --input: 220 15% 88%;
+    --ring: 24 95% 45%;
+
+    --radius: 1rem;
+
+    /* Custom DEX colors for light mode */
+    --chrome: 220 15% 40%;
+    --chrome-dark: 220 15% 25%;
+    --orange-glow: 24 95% 45%;
+    --orange-light: 30 95% 55%;
+    --metal-shine: 220 15% 50%;
+    --glass: 220 20% 96%;
+    --glass-border: 220 15% 75%;
+
+    --sidebar-background: 220 20% 97%;
+    --sidebar-foreground: 220 25% 12%;
+    --sidebar-primary: 24 95% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 15% 90%;
+    --sidebar-accent-foreground: 220 25% 12%;
+    --sidebar-border: 220 15% 82%;
+    --sidebar-ring: 24 95% 45%;
+  }
+
+  .dark {
+    /* Dark metallic background */
+    --background: 220 20% 6%;
+    --foreground: 0 0% 95%;
+
+    /* Cards with glass effect */
+    --card: 220 15% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 15% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Orange primary */
+    --primary: 24 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Metallic secondary */
+    --secondary: 220 10% 18%;
+    --secondary-foreground: 0 0% 85%;
+
+    /* Muted metallic */
+    --muted: 220 10% 15%;
+    --muted-foreground: 220 10% 55%;
+
+    /* Orange accent */
+    --accent: 24 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Metallic borders */
+    --border: 220 10% 20%;
+    --input: 220 10% 15%;
+    --ring: 24 100% 50%;
+
+    /* Custom DEX colors */
+    --chrome: 220 10% 70%;
+    --chrome-dark: 220 10% 40%;
+    --orange-glow: 24 100% 50%;
+    --orange-light: 30 100% 60%;
+    --metal-shine: 220 15% 85%;
+    --glass: 220 15% 12%;
+    --glass-border: 220 10% 25%;
+
+    --sidebar-background: 220 15% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 24 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 18%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 10% 20%;
+    --sidebar-ring: 24 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  /* Light mode body background */
+  :root body,
+  html:not(.dark) body {
+    background: linear-gradient(135deg, hsl(220, 20%, 97%) 0%, hsl(220, 15%, 95%) 50%, hsl(220, 20%, 98%) 100%);
+  }
+
+  /* Dark mode body background */
+  .dark body,
+  .dark {
+    background: linear-gradient(135deg, hsl(220, 20%, 6%) 0%, hsl(220, 15%, 8%) 50%, hsl(220, 10%, 10%) 100%);
+  }
+}
+
+@layer components {
+  /* Liquid metal card effect */
+  .glass-card {
+    @apply relative overflow-hidden bg-card border border-border;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 4px 24px -4px hsla(220, 20%, 10%, 0.08), 0 2px 8px -2px hsla(220, 20%, 10%, 0.04);
+  }
+
+  .dark .glass-card {
+    @apply bg-card/80;
+    box-shadow: none;
+  }
+
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, hsl(var(--border)) 50%, transparent 100%);
+    opacity: 0.5;
+  }
+
+  .dark .glass-card::before {
+    background: linear-gradient(90deg, transparent 0%, hsl(220, 10%, 70%) 50%, transparent 100%);
+  }
+
+  /* Metal shine effect */
+  .metal-shine {
+    @apply relative overflow-hidden;
+  }
+
+  .metal-shine::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      45deg,
+      transparent 30%,
+      hsla(220, 15%, 85%, 0.1) 50%,
+      transparent 70%
+    );
+    animation: shine 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* Orange glow effect */
+  .orange-glow {
+    box-shadow: 0 0 30px hsla(24, 100%, 50%, 0.3),
+                0 0 60px hsla(24, 100%, 50%, 0.1);
+  }
+
+  .orange-glow-subtle {
+    box-shadow: 0 0 20px hsla(24, 100%, 50%, 0.15);
+  }
+
+  /* Token input styling */
+  .token-input {
+    @apply bg-secondary/50 border border-border rounded-xl p-4;
+    backdrop-filter: blur(10px);
+  }
+
+  /* Feature card */
+  .feature-card {
+    @apply glass-card rounded-2xl p-6 transition-all duration-300 border border-border;
+  }
+
+  .feature-card:hover {
+    @apply orange-glow-subtle;
+    transform: translateY(-4px);
+    border-color: hsla(24, 100%, 50%, 0.3);
+  }
+
+  /* Swap button */
+  .swap-button {
+    @apply w-full py-4 rounded-xl font-semibold text-lg transition-all duration-300;
+    background: linear-gradient(135deg, hsl(24, 100%, 50%) 0%, hsl(30, 100%, 55%) 100%);
+  }
+
+  .swap-button:hover {
+    @apply orange-glow;
+    transform: scale(1.02);
+  }
+
+  .swap-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Liquid Metal Button Effect */
+  .liquid-metal-btn {
+    background: 
+      linear-gradient(135deg, 
+        hsl(24, 100%, 55%) 0%, 
+        hsl(30, 100%, 60%) 25%,
+        hsl(24, 100%, 50%) 50%,
+        hsl(20, 100%, 45%) 75%,
+        hsl(24, 100%, 55%) 100%);
+    background-size: 200% 200%;
+    animation: liquid-flow 6s ease infinite;
+    box-shadow: 
+      inset 0 1px 0 0 hsla(0, 0%, 100%, 0.2),
+      inset 0 -1px 0 0 hsla(0, 0%, 0%, 0.2),
+      0 4px 20px hsla(24, 100%, 50%, 0.3);
+  }
+
+  .liquid-metal-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsla(0, 0%, 100%, 0.25) 50%,
+      transparent 100%
+    );
+    animation: shimmer-sweep 6s ease-in-out infinite;
+  }
+
+  .liquid-metal-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(
+      180deg,
+      hsla(0, 0%, 100%, 0.15) 0%,
+      transparent 100%
+    );
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .liquid-metal-btn:hover {
+    box-shadow: 
+      inset 0 1px 0 0 hsla(0, 0%, 100%, 0.3),
+      inset 0 -1px 0 0 hsla(0, 0%, 0%, 0.2),
+      0 8px 30px hsla(24, 100%, 50%, 0.4),
+      0 0 40px hsla(24, 100%, 50%, 0.2);
+  }
+
+  /* Cursor-responsive liquid metal */
+  .liquid-metal-cursor {
+    --mouse-x: 50%;
+    --mouse-y: 50%;
+    background: 
+      radial-gradient(
+        circle at var(--mouse-x) var(--mouse-y),
+        hsl(35, 100%, 65%) 0%,
+        hsl(30, 100%, 58%) 20%,
+        hsl(24, 100%, 52%) 40%,
+        hsl(20, 100%, 48%) 60%,
+        hsl(24, 100%, 50%) 100%
+      );
+    box-shadow: 
+      inset 0 1px 0 0 hsla(0, 0%, 100%, 0.25),
+      inset 0 -1px 0 0 hsla(0, 0%, 0%, 0.15),
+      0 4px 20px hsla(24, 100%, 50%, 0.3);
+    transition: box-shadow 0.3s ease;
+  }
+
+  .liquid-metal-cursor::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+      circle at var(--mouse-x) var(--mouse-y),
+      hsla(0, 0%, 100%, 0.35) 0%,
+      hsla(0, 0%, 100%, 0.1) 30%,
+      transparent 60%
+    );
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .liquid-metal-cursor:hover::before {
+    opacity: 1;
+  }
+
+  .liquid-metal-cursor::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(
+      180deg,
+      hsla(0, 0%, 100%, 0.12) 0%,
+      transparent 100%
+    );
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .liquid-metal-cursor:hover {
+    box-shadow: 
+      inset 0 1px 0 0 hsla(0, 0%, 100%, 0.35),
+      inset 0 -1px 0 0 hsla(0, 0%, 0%, 0.15),
+      0 8px 30px hsla(24, 100%, 50%, 0.45),
+      0 0 50px hsla(24, 100%, 50%, 0.25);
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .animate-liquid {
+    animation: liquid 4s ease-in-out infinite;
+  }
+}
+
+@keyframes shine {
+  0%, 100% {
+    transform: translateX(-100%) rotate(45deg);
+  }
+  50% {
+    transform: translateX(100%) rotate(45deg);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px hsla(24, 100%, 50%, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px hsla(24, 100%, 50%, 0.5);
+  }
+}
+
+@keyframes liquid {
+  0%, 100% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  }
+  50% {
+    border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+  }
+}
+
+@keyframes liquid-flow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    left: -100%;
+  }
+  50%, 100% {
+    left: 100%;
+  }
+}
