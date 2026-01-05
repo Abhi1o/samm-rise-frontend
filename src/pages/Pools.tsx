@@ -1,12 +1,14 @@
 import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Search, Plus, ChevronDown, ExternalLink } from "lucide-react";
+import { Search, Plus, ChevronDown, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import AddLiquidityModal from "@/components/AddLiquidityModal";
 import CreatePoolModal from "@/components/CreatePoolModal";
+import { usePoolData } from "@/hooks/usePoolData";
+import { getChainName } from "@/config/chains";
 
 const POOLS_DATA = [
   { id: 1, token0: "ETH", token1: "USDC", network: "Ethereum", feeTier: "0.05%", apr: "42.87%", tvl: "$2,326,158", volume24h: "$68,924,061", type: "V3" },
@@ -42,7 +44,29 @@ const Pools = () => {
   const [addLiquidityOpen, setAddLiquidityOpen] = useState(false);
   const [createPoolOpen, setCreatePoolOpen] = useState(false);
 
-  const filteredPools = POOLS_DATA.filter((pool) => {
+  // Fetch real pool data from backend
+  const { pools, totalShards, chainName, isLoading, error, refetch } = usePoolData();
+
+  // Transform pools to display format
+  const displayPools = pools.map((pool, index) => {
+    const [token0Symbol, token1Symbol] = pool.pairName.split('-');
+    const tvl = pool.liquidity ? `$${Number(pool.liquidity).toLocaleString()}` : '$0';
+
+    return {
+      id: index + 1,
+      token0: token0Symbol,
+      token1: token1Symbol,
+      network: getChainName(pool.chainId || 11155931),
+      feeTier: '0.25%', // SAMM default fee tier
+      apr: '0%', // TODO: Calculate from stats
+      tvl,
+      volume24h: '$0', // TODO: Get from stats endpoint
+      type: 'SAMM',
+      address: pool.address,
+    };
+  });
+
+  const filteredPools = displayPools.filter((pool) => {
     const matchesSearch =
       pool.token0.toLowerCase().includes(searchQuery.toLowerCase()) ||
       pool.token1.toLowerCase().includes(searchQuery.toLowerCase());
@@ -222,7 +246,38 @@ const Pools = () => {
 
               {/* Table Body */}
               {activeTab === "all" ? (
-                filteredPools.map((pool, index) => (
+                <>
+                  {/* Loading State */}
+                  {isLoading && (
+                    <div className="flex items-center justify-center py-16">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <span className="ml-2 text-muted-foreground">Loading pools...</span>
+                    </div>
+                  )}
+
+                  {/* Error State */}
+                  {error && !isLoading && (
+                    <div className="p-6">
+                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                        <p className="text-destructive mb-2">Failed to load pools. Please try again.</p>
+                        <Button onClick={() => refetch()} variant="outline" size="sm" className="mt-2">
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {!isLoading && !error && filteredPools.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                      <p className="text-lg">No pools available</p>
+                      <p className="text-sm">Check back later or create a new pool</p>
+                    </div>
+                  )}
+
+                  {/* Pools List */}
+                  {!isLoading && !error && filteredPools.map((pool, index) => (
                   <div
                     key={pool.id}
                     className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors items-center animate-fade-in"
@@ -259,7 +314,8 @@ const Pools = () => {
                       </button>
                     </div>
                   </div>
-                ))
+                  ))}
+                </>
               ) : (
                 <div>
                   {/* Position Status Tabs */}

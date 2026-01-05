@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap, Check, AlertCircle } from "lucide-react";
+import { ArrowDown, Settings, RefreshCw, Info, Zap } from "lucide-react";
 import TokenInput from "./TokenInput";
 import TokenSelectModal, { Token } from "./TokenSelectModal";
 import { Button } from "./ui/button";
 import { sammApi } from "@/services/sammApi";
 import { useToast } from "@/hooks/use-toast";
 import { riseChain } from "@/config/chains";
-import { commonTokens, isNativeToken } from "@/config/tokens";
-import { useTokenApproval } from "@/hooks/useTokenApproval";
-import { useSwapExecution } from "@/hooks/useSwapExecution";
-import { getCrossPoolRouter } from "@/config/contracts";
-import { useChainId } from "wagmi";
-import { parseUnits, Address } from "viem";
+import { commonTokens } from "@/config/tokens";
 
 const EnhancedSwapCard = () => {
   const { toast } = useToast();
-  const chainId = useChainId();
   const [fromValue, setFromValue] = useState("");
   const [toValue, setToValue] = useState("");
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
@@ -43,29 +37,6 @@ const EnhancedSwapCard = () => {
     address: riseChainTokens[4]?.address || "",
     decimals: riseChainTokens[4]?.decimals || 6,
   });
-
-  // Get router address
-  const routerAddress = getCrossPoolRouter(chainId);
-
-  // Check if token needs approval (native tokens don't need approval)
-  const needsTokenApproval = fromToken.address && !isNativeToken(fromToken.address);
-  const amountInBigInt = fromValue ? parseUnits(fromValue, fromToken.decimals) : BigInt(0);
-
-  // Token approval hook
-  const {
-    needsApproval,
-    approvalState,
-    approveToken,
-    isApproving,
-  } = useTokenApproval({
-    tokenAddress: fromToken.address as Address,
-    spenderAddress: routerAddress,
-    amountNeeded: amountInBigInt,
-    enabled: needsTokenApproval && !!fromValue,
-  });
-
-  // Swap execution hook
-  const { executeSwap, swapState, isLoading: isSwapping, reset: resetSwap } = useSwapExecution();
 
   // Fetch quote when amount changes
   useEffect(() => {
@@ -139,39 +110,6 @@ const EnhancedSwapCard = () => {
       setQuoteData(null);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSwap = async () => {
-    if (!fromToken.address || !toToken.address || !quoteData) return;
-
-    try {
-      // Step 1: Approve token if needed
-      if (needsTokenApproval && needsApproval) {
-        await approveToken();
-        return; // User will click swap again after approval
-      }
-
-      // Step 2: Execute swap
-      await executeSwap({
-        fromToken: fromToken.address as Address,
-        toToken: toToken.address as Address,
-        amountIn: fromValue,
-        amountOut: toValue,
-        fromDecimals: fromToken.decimals,
-        toDecimals: toToken.decimals,
-        quoteData,
-      });
-
-      // Reset form on success
-      if (swapState.status === 'success') {
-        setFromValue('');
-        setToValue('');
-        setQuoteData(null);
-        setRouteInfo('');
-      }
-    } catch (error) {
-      console.error('Swap failed:', error);
     }
   };
 
@@ -338,71 +276,19 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Transaction Status */}
-          {swapState.status === 'confirming' && (
-            <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-              <div className="flex items-center gap-2 text-sm text-blue-500">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Transaction confirming...</span>
-              </div>
-            </div>
-          )}
-
-          {swapState.status === 'success' && (
-            <div className="mt-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-              <div className="flex items-center gap-2 text-sm text-green-500">
-                <Check className="w-4 h-4" />
-                <span>Swap successful!</span>
-              </div>
-            </div>
-          )}
-
-          {swapState.status === 'error' && swapState.error && (
-            <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center gap-2 text-sm text-red-500">
-                <AlertCircle className="w-4 h-4" />
-                <span>{swapState.error}</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2 w-full"
-                onClick={() => {
-                  resetSwap();
-                  handleSwap();
-                }}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-
           {/* Swap Action Button */}
-          <Button
-            variant="swap"
-            size="xl"
+          <Button 
+            variant="swap" 
+            size="xl" 
             className="w-full mt-5 liquid-metal-cursor"
             onMouseMove={handleMouseMove}
-            onClick={handleSwap}
-            disabled={!fromValue || loading || !toValue || isApproving || isSwapping}
+            disabled={!fromValue || loading || !toValue}
             style={{
               '--mouse-x': `${mousePos.x}%`,
               '--mouse-y': `${mousePos.y}%`,
             } as React.CSSProperties}
           >
-            {isApproving
-              ? "Approving..."
-              : isSwapping
-              ? swapState.status === 'signing'
-                ? "Sign in wallet..."
-                : "Confirming..."
-              : needsTokenApproval && needsApproval
-              ? `Approve ${fromToken.symbol}`
-              : loading
-              ? "Fetching quote..."
-              : fromValue && toValue
-              ? "Swap"
-              : "Enter an amount"}
+            {loading ? "Fetching quote..." : fromValue && toValue ? "Connect Wallet to Swap" : "Enter an amount"}
           </Button>
 
           {/* c-smaller-better indicator */}

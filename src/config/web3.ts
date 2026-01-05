@@ -32,11 +32,42 @@ function getRpcUrl(chain: typeof mainnet | typeof riseChain): string {
 export const chains = [riseChain, mainnet, arbitrum, optimism, polygon, base] as const;
 
 /**
+ * Get WalletConnect Project ID
+ * Validates and returns the project ID from environment variables
+ */
+function getProjectId(): string {
+  const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+
+  // Validate project ID
+  if (!projectId || projectId === 'your_walletconnect_project_id_here') {
+    throw new Error(
+      '❌ VITE_WALLETCONNECT_PROJECT_ID is not configured!\n\n' +
+      'Get your FREE Project ID:\n' +
+      '1. Go to https://cloud.walletconnect.com/sign-in\n' +
+      '2. Create a new project\n' +
+      '3. Copy the Project ID\n' +
+      '4. Add to .env.local: VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here\n' +
+      '5. Restart the dev server'
+    );
+  }
+
+  if (projectId.length !== 32) {
+    throw new Error(
+      `❌ Invalid WalletConnect Project ID!\n` +
+      `Expected 32 characters, got ${projectId.length}.\n` +
+      `Please check your .env.local file.`
+    );
+  }
+
+  return projectId;
+}
+
+/**
  * Wagmi configuration with RainbowKit
  */
 export const wagmiConfig = getDefaultConfig({
   appName: 'SAMM DEX',
-  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
+  projectId: getProjectId(),
   chains: chains,
   transports: {
     [riseChain.id]: http(getRpcUrl(riseChain)),
