@@ -99,6 +99,21 @@ export interface ChainInfo {
   };
 }
 
+export interface ShardDetailedInfo extends ShardInfo {
+  volume24h?: string;
+  fees24h?: string;
+  apr?: string;
+  utilization?: string;
+}
+
+export interface PoolStats {
+  tvl: string;
+  volume24h: string;
+  fees24h: string;
+  apr: string;
+  utilization: string;
+}
+
 class SAMMApiService {
   private baseUrl: string;
 
@@ -231,6 +246,53 @@ class SAMMApiService {
       // Fall back to multi-hop routing
       console.log('Direct swap not available, trying multi-hop routing...');
       return await this.getMultiHopRoute(chain, amountIn, tokenIn, tokenOut);
+    }
+  }
+
+  /**
+   * Get detailed pool/shard information with statistics
+   * Note: This endpoint may not be available in all backends
+   */
+  async getDetailedShards(chain: string): Promise<{
+    chain: string;
+    chainId: number;
+    shards: Record<string, ShardDetailedInfo[]>;
+    totalShards: number;
+    totalTVL: string;
+  }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/${chain}/shards/detailed`);
+      if (!response.ok) {
+        // Fall back to regular shards endpoint if detailed not available
+        const regularShards = await this.getShards(chain);
+        return {
+          ...regularShards,
+          totalTVL: '0',
+        };
+      }
+      return response.json();
+    } catch (error) {
+      // Fall back to regular shards endpoint
+      const regularShards = await this.getShards(chain);
+      return {
+        ...regularShards,
+        totalTVL: '0',
+      };
+    }
+  }
+
+  /**
+   * Get pool statistics for a specific pool/shard
+   * Note: This endpoint may not be available in all backends
+   */
+  async getPoolStats(chain: string, poolAddress: string): Promise<PoolStats | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/${chain}/pool/${poolAddress}/stats`);
+      if (!response.ok) return null;
+      return response.json();
+    } catch (error) {
+      console.warn(`Pool stats not available for ${poolAddress}`);
+      return null;
     }
   }
 }

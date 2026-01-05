@@ -4,10 +4,21 @@ Your frontend repository has been successfully set up and pushed to GitHub!
 
 ## 📦 Repository Information
 
-- **Repository URL**: https://github.com/ASR-Innovations/samm-rise-frontend.git
+### Primary Repository (ASR-Innovations)
+- **URL**: https://github.com/ASR-Innovations/samm-rise-frontend.git
+- **Remote**: `origin`
+- **Purpose**: Main development repository
+
+### Guideploy Repository (Abhi1o)
+- **URL**: https://github.com/Abhi1o/samm-rise-frontend.git
+- **Remote**: `guideploy`
+- **Purpose**: Deployment and production builds
+
+### Status
 - **Branch**: main
 - **Initial Commit**: ✅ Complete
 - **Files Pushed**: 106 files
+- **Both Repositories**: ✅ Synced
 
 ## 📁 What Was Added
 
@@ -26,10 +37,15 @@ Your frontend repository has been successfully set up and pushed to GitHub!
 - ✅ UI components
 - ✅ API services
 
-## 🔗 GitHub Repository
+## 🔗 GitHub Repositories
 
-Visit your repository at:
+### Primary Repository
 **https://github.com/ASR-Innovations/samm-rise-frontend**
+
+### Guideploy Repository
+**https://github.com/Abhi1o/samm-rise-frontend**
+
+Both repositories are synced and contain the same code.
 
 ## 🚀 Next Steps
 
@@ -83,7 +99,7 @@ For documentation or demo:
 ### Daily Workflow
 
 ```bash
-# Pull latest changes
+# Pull latest changes from primary repo
 git pull origin main
 
 # Create new feature branch
@@ -95,8 +111,27 @@ git add .
 # Commit with message
 git commit -m "feat: add new feature"
 
-# Push to GitHub
+# Push to both repositories
 git push origin feature/your-feature
+git push guideploy feature/your-feature
+```
+
+### Managing Multiple Remotes
+
+```bash
+# View all remotes
+git remote -v
+
+# Push to specific remote
+git push origin main
+git push guideploy main
+
+# Push to both at once
+git push origin main && git push guideploy main
+
+# Pull from specific remote
+git pull origin main
+git pull guideploy main
 ```
 
 ### Syncing with Upstream
