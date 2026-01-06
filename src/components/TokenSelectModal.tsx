@@ -1,10 +1,14 @@
 import { useState, useMemo } from "react";
 import { useChainId, useAccount, useBalance } from "wagmi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { getTokensForChain } from "@/config/tokens";
 import { Token as ConfigToken } from "@/types/tokens";
 import { Address } from "viem";
+import TokenLogo from "./TokenLogo";
+import { useTokenBalance } from "@/hooks/useTokenBalance";
+import { useTokenPrice } from "@/hooks/useTokenPrice";
+import { formatUSD } from "@/utils/formatters";
 
 export interface Token {
   symbol: string;
@@ -22,6 +26,69 @@ interface TokenSelectModalProps {
   excludeToken?: string;
 }
 
+// Component to display individual token with balance and price
+const TokenRow = ({
+  token,
+  configToken,
+  onClick,
+  formatAddress
+}: {
+  token: Token & { logoURI?: string };
+  configToken?: ConfigToken;
+  onClick: () => void;
+  formatAddress: (address: string) => string;
+}) => {
+  const { isConnected } = useAccount();
+
+  // Fetch balance and price using the full config token
+  const { balanceFormatted, isLoading: balanceLoading } = useTokenBalance(configToken);
+  const { price } = useTokenPrice(configToken);
+
+  // Calculate USD value
+  const usdValue = balanceFormatted && price
+    ? formatUSD(parseFloat(balanceFormatted) * price)
+    : undefined;
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors group"
+    >
+      <div className="flex items-center gap-3">
+        <TokenLogo
+          symbol={token.symbol}
+          logoURI={token.logoURI}
+          icon={token.icon}
+          size="lg"
+        />
+        <div className="text-left">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground">{token.symbol}</span>
+            <span className="text-sm text-muted-foreground">{token.name}</span>
+          </div>
+          <div className="text-xs text-muted-foreground font-mono">
+            {token.address && formatAddress(token.address)}
+          </div>
+        </div>
+      </div>
+      {isConnected && (
+        <div className="text-right">
+          {balanceLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          ) : balanceFormatted && parseFloat(balanceFormatted) > 0 ? (
+            <>
+              <div className="font-medium text-foreground">{parseFloat(balanceFormatted).toFixed(6)}</div>
+              {usdValue && (
+                <div className="text-xs text-muted-foreground">{usdValue}</div>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+    </button>
+  );
+};
+
 const TokenSelectModal = ({ isOpen, onClose, onSelect, excludeToken }: TokenSelectModalProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const chainId = useChainId();
@@ -32,15 +99,17 @@ const TokenSelectModal = ({ isOpen, onClose, onSelect, excludeToken }: TokenSele
     return getTokensForChain(chainId);
   }, [chainId]);
 
-  // Convert config tokens to modal token format
-  const allTokens: Token[] = useMemo(() => {
+  // Convert config tokens to modal token format with full config reference
+  const allTokens: (Token & { logoURI?: string; configToken?: ConfigToken })[] = useMemo(() => {
     return availableTokens.map((token) => ({
       symbol: token.symbol,
       name: token.name,
       icon: token.icon || "🪙",
+      logoURI: token.logoURI,
       address: token.address,
       balance: undefined, // Will be fetched per token if needed
       usdValue: undefined,
+      configToken: token, // Store full config for hooks
     }));
   }, [availableTokens]);
 
@@ -115,7 +184,12 @@ const TokenSelectModal = ({ isOpen, onClose, onSelect, excludeToken }: TokenSele
                   onClick={() => handleSelect(token)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary hover:bg-secondary/80 border border-border hover:border-primary/30 transition-all"
                 >
-                  <span className="text-lg">{token.icon}</span>
+                  <TokenLogo
+                    symbol={token.symbol}
+                    logoURI={token.logoURI}
+                    icon={token.icon}
+                    size="sm"
+                  />
                   <span className="text-sm font-medium text-foreground">{token.symbol}</span>
                 </button>
               ))}
@@ -133,34 +207,13 @@ const TokenSelectModal = ({ isOpen, onClose, onSelect, excludeToken }: TokenSele
           <div className="max-h-[400px] overflow-y-auto">
             {filteredTokens.length > 0 ? (
               filteredTokens.map((token, index) => (
-                <button
+                <TokenRow
                   key={`${token.symbol}-${token.address}-${index}`}
+                  token={token}
+                  configToken={token.configToken}
                   onClick={() => handleSelect(token)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-secondary group-hover:bg-secondary/80 flex items-center justify-center text-xl border border-border">
-                      {token.icon}
-                    </div>
-                    <div className="text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{token.symbol}</span>
-                        <span className="text-sm text-muted-foreground">{token.name}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground font-mono">
-                        {token.address && formatAddress(token.address)}
-                      </div>
-                    </div>
-                  </div>
-                  {token.balance && (
-                    <div className="text-right">
-                      <div className="font-medium text-foreground">{token.balance}</div>
-                      {token.usdValue && (
-                        <div className="text-xs text-muted-foreground">${token.usdValue}</div>
-                      )}
-                    </div>
-                  )}
-                </button>
+                  formatAddress={formatAddress}
+                />
               ))
             ) : (
               <div className="px-4 py-8 text-center text-muted-foreground">

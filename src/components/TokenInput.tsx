@@ -1,10 +1,12 @@
 import { ChevronDown } from "lucide-react";
+import TokenLogo from "./TokenLogo";
 
 interface TokenInputProps {
   label: string;
   token: {
     symbol: string;
     icon: string;
+    logoURI?: string;
     balance?: string;
   };
   value: string;
@@ -44,11 +46,16 @@ const TokenInput = ({
           readOnly={isOutput}
         />
         
-        <button 
+        <button
           onClick={onTokenClick}
           className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary hover:bg-secondary/80 border border-border hover:border-primary/30 transition-all flex-shrink-0"
         >
-          <span className="text-xl">{token.icon}</span>
+          <TokenLogo
+            symbol={token.symbol}
+            logoURI={token.logoURI}
+            icon={token.icon}
+            size="md"
+          />
           <span className="font-semibold text-foreground text-sm">{token.symbol}</span>
           <ChevronDown className="w-4 h-4 text-muted-foreground" />
         </button>

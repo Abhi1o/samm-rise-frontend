@@ -164,7 +164,7 @@ class SAMMApiService {
 
   /**
    * Get best shard for a swap (c-smaller-better)
-   * Note: Backend expects amountOut parameter
+   * Backend now supports both amountIn and amountOut
    */
   async getBestShard(
     chain: string,
@@ -178,7 +178,7 @@ class SAMMApiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        amountOut: amountIn, // Backend expects amountOut parameter
+        amountIn, // Send as amountIn (backend now supports both)
         tokenIn,
         tokenOut,
       }),
@@ -231,22 +231,16 @@ class SAMMApiService {
   }
 
   /**
-   * Calculate swap quote (tries best shard first, falls back to multi-hop)
+   * Calculate swap quote (uses cross-pool endpoint which handles both direct and multi-hop)
    */
   async getSwapQuote(
     chain: string,
     amountIn: string,
     tokenIn: string,
     tokenOut: string
-  ): Promise<SwapQuote | MultiHopRoute> {
-    try {
-      // Try direct swap first
-      return await this.getBestShard(chain, amountIn, tokenIn, tokenOut);
-    } catch (error) {
-      // Fall back to multi-hop routing
-      console.log('Direct swap not available, trying multi-hop routing...');
-      return await this.getMultiHopRoute(chain, amountIn, tokenIn, tokenOut);
-    }
+  ): Promise<MultiHopRoute> {
+    // Use cross-pool endpoint directly - it handles both direct and multi-hop swaps
+    return await this.getMultiHopRoute(chain, amountIn, tokenIn, tokenOut);
   }
 
   /**

@@ -9,6 +9,8 @@ import AddLiquidityModal from "@/components/AddLiquidityModal";
 import CreatePoolModal from "@/components/CreatePoolModal";
 import { usePoolData } from "@/hooks/usePoolData";
 import { useNetwork } from "@/contexts/NetworkContext";
+import TokenLogo from "@/components/TokenLogo";
+import { getTokensForChain } from "@/config/tokens";
 
 const POOLS_DATA = [
   { id: 1, token0: "ETH", token1: "USDC", network: "Ethereum", feeTier: "0.05%", apr: "42.87%", tvl: "$2,326,158", volume24h: "$68,924,061", type: "V3" },
@@ -50,6 +52,21 @@ const Pools = () => {
   // Fetch real pool data from backend for current network
   const { pools, totalShards, chainName, isLoading, error, refetch } = usePoolData();
 
+  // Get tokens for current network to fetch logoURIs
+  const networkTokens = currentNetwork ? getTokensForChain(currentNetwork.chainId) : [];
+
+  // Helper to get token logo URI
+  const getTokenLogoURI = (symbol: string) => {
+    const token = networkTokens.find(t => t.symbol === symbol);
+    return token?.logoURI;
+  };
+
+  // Helper to get token icon
+  const getTokenIcon = (symbol: string) => {
+    const token = networkTokens.find(t => t.symbol === symbol);
+    return token?.icon || TOKEN_ICONS[symbol] || "🪙";
+  };
+
   // Refetch pools when network changes
   useEffect(() => {
     if (currentNetwork) {
@@ -66,6 +83,10 @@ const Pools = () => {
       id: index + 1,
       token0: token0Symbol,
       token1: token1Symbol,
+      token0LogoURI: getTokenLogoURI(token0Symbol),
+      token1LogoURI: getTokenLogoURI(token1Symbol),
+      token0Icon: getTokenIcon(token0Symbol),
+      token1Icon: getTokenIcon(token1Symbol),
       network: currentNetwork?.displayName || chainName,
       feeTier: '0.25%', // SAMM default fee tier
       apr: '0%', // TODO: Calculate from stats
@@ -295,12 +316,20 @@ const Pools = () => {
                   >
                     <div className="col-span-3 flex items-center gap-3">
                       <div className="flex -space-x-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-secondary to-secondary/50 flex items-center justify-center text-sm border border-border">
-                          {TOKEN_ICONS[pool.token0]}
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-secondary to-secondary/50 flex items-center justify-center text-sm border border-border">
-                          {TOKEN_ICONS[pool.token1]}
-                        </div>
+                        <TokenLogo
+                          symbol={pool.token0}
+                          logoURI={pool.token0LogoURI}
+                          icon={pool.token0Icon}
+                          size="md"
+                          className="border-2 border-background"
+                        />
+                        <TokenLogo
+                          symbol={pool.token1}
+                          logoURI={pool.token1LogoURI}
+                          icon={pool.token1Icon}
+                          size="md"
+                          className="border-2 border-background"
+                        />
                       </div>
                       <div>
                         <p className="font-semibold">{pool.token0} / {pool.token1}</p>

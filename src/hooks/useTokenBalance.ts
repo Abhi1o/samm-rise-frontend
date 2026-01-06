@@ -12,7 +12,11 @@ export function useTokenBalance(token?: Token) {
   const chainId = useChainId();
 
   // Native token balance (ETH, MATIC, etc.)
-  const { data: nativeBalance, isLoading: nativeLoading } = useBalance({
+  const {
+    data: nativeBalance,
+    isLoading: nativeLoading,
+    refetch: refetchNative,
+  } = useBalance({
     address: walletAddress,
     chainId: token?.chainId || chainId,
     query: {
@@ -22,7 +26,11 @@ export function useTokenBalance(token?: Token) {
   });
 
   // ERC20 token balance
-  const { data: erc20Balance, isLoading: erc20Loading } = useReadContract({
+  const {
+    data: erc20Balance,
+    isLoading: erc20Loading,
+    refetch: refetchERC20,
+  } = useReadContract({
     address: token?.address as Address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -34,12 +42,22 @@ export function useTokenBalance(token?: Token) {
     },
   });
 
+  const refetch = async () => {
+    if (!token) return;
+    if (isNativeToken(token.address)) {
+      await refetchNative();
+    } else {
+      await refetchERC20();
+    }
+  };
+
   if (!token || !walletAddress) {
     return {
       balance: '0',
       balanceFormatted: '0',
       balanceBigInt: BigInt(0),
       isLoading: false,
+      refetch,
     };
   }
 
@@ -52,6 +70,7 @@ export function useTokenBalance(token?: Token) {
       balanceFormatted: nativeBalance.formatted,
       balanceBigInt: nativeBalance.value,
       isLoading,
+      refetch,
     };
   }
 
@@ -62,6 +81,7 @@ export function useTokenBalance(token?: Token) {
       balanceFormatted: formatted,
       balanceBigInt: erc20Balance as bigint,
       isLoading,
+      refetch,
     };
   }
 
@@ -70,5 +90,6 @@ export function useTokenBalance(token?: Token) {
     balanceFormatted: '0',
     balanceBigInt: BigInt(0),
     isLoading,
+    refetch,
   };
 }

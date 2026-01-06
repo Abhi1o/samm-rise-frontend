@@ -14,6 +14,7 @@ export const nativeTokens: Record<number, Token> = {
     decimals: 18,
     chainId: riseChain.id,
     icon: '⟠',
+    logoURI: 'https://assets.coingecko.com/coins/images/279/standard/ethereum.png',
     coingeckoId: 'ethereum',
   },
   [mainnet.id]: {
@@ -23,6 +24,7 @@ export const nativeTokens: Record<number, Token> = {
     decimals: 18,
     chainId: mainnet.id,
     icon: '⟠',
+    logoURI: 'https://assets.coingecko.com/coins/images/279/standard/ethereum.png',
     coingeckoId: 'ethereum',
   },
   [arbitrum.id]: {
@@ -77,6 +79,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 18,
       chainId: riseChain.id,
       icon: '⟠',
+      logoURI: 'https://assets.coingecko.com/coins/images/2518/standard/weth.png',
       coingeckoId: 'weth',
     },
     {
@@ -86,6 +89,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 8,
       chainId: riseChain.id,
       icon: '₿',
+      logoURI: 'https://assets.coingecko.com/coins/images/7598/standard/wrapped_bitcoin_wbtc.png',
       coingeckoId: 'wrapped-bitcoin',
     },
     {
@@ -95,6 +99,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 6,
       chainId: riseChain.id,
       icon: '💲',
+      logoURI: 'https://assets.coingecko.com/coins/images/6319/standard/usdc.png',
       coingeckoId: 'usd-coin',
     },
     {
@@ -104,6 +109,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 6,
       chainId: riseChain.id,
       icon: '💵',
+      logoURI: 'https://assets.coingecko.com/coins/images/325/standard/Tether.png',
       coingeckoId: 'tether',
     },
     {
@@ -113,6 +119,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 18,
       chainId: riseChain.id,
       icon: '◈',
+      logoURI: 'https://assets.coingecko.com/coins/images/9956/standard/Badge_Dai.png',
       coingeckoId: 'dai',
     },
     {
@@ -122,6 +129,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 18,
       chainId: riseChain.id,
       icon: '⬡',
+      logoURI: 'https://assets.coingecko.com/coins/images/877/standard/chainlink-new-logo.png',
       coingeckoId: 'chainlink',
     },
     {
@@ -131,6 +139,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 18,
       chainId: riseChain.id,
       icon: '🦄',
+      logoURI: 'https://assets.coingecko.com/coins/images/12504/standard/uni.jpg',
       coingeckoId: 'uniswap',
     },
     {
@@ -140,6 +149,7 @@ export const commonTokens: Record<number, Token[]> = {
       decimals: 18,
       chainId: riseChain.id,
       icon: '👻',
+      logoURI: 'https://assets.coingecko.com/coins/images/12645/standard/aave-token-round.png',
       coingeckoId: 'aave',
     },
   ],

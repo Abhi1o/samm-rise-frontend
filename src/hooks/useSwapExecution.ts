@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Address } from 'viem';
 import { CROSS_POOL_ROUTER_ABI } from '@/config/abis';
 import { getCrossPoolRouter } from '@/config/contracts';
@@ -35,9 +35,10 @@ interface UseSwapExecutionReturn {
  */
 export function useSwapExecution(): UseSwapExecutionReturn {
   const { toast } = useToast();
-  const { address: userAddress } = useAccount();
-  const chainId = useChainId();
+  const { address: userAddress, chainId } = useAccount();
   const [swapState, setSwapState] = useState<SwapState>('idle');
+  const submittedToastShown = useRef<string | null>(null);
+  const successToastShown = useRef<string | null>(null);
 
   // Write contract for swap
   const {
@@ -61,10 +62,18 @@ export function useSwapExecution(): UseSwapExecutionReturn {
 
   /**
    * Build swap path from quote data
+   * 
+   * The contract uses swapExactOutput, which means:
+   * - We specify the exact amountOut we want for each hop
+   * - The contract calculates the required amountIn
+   * - We provide maxAmountIn as a slippage protection
+   * 
+   * IMPORTANT: We need to add MORE slippage because the backend's amountIn
+   * is just an estimate. The actual required input might be higher.
    */
   const buildSwapPath = useCallback(
     (params: SwapParams) => {
-      const { fromToken, toToken, amountOut, toDecimals, quoteData, slippageBps, deadline, recipient } = params;
+      const { fromToken, toToken, quoteData, slippageBps, deadline, recipient } = params;
 
       const hops: {
         tokenIn: Address;
@@ -72,38 +81,50 @@ export function useSwapExecution(): UseSwapExecutionReturn {
         amountOut: bigint;
       }[] = [];
 
-      // Parse exact amount out
-      const exactAmountOut = BigInt(Math.floor(parseFloat(amountOut) * Math.pow(10, toDecimals)));
-
-      // Check if it's a direct swap or multi-hop
-      if ('bestShard' in quoteData) {
-        // Direct swap (single hop)
-        hops.push({
-          tokenIn: fromToken,
-          tokenOut: toToken,
-          amountOut: exactAmountOut,
-        });
-      } else if ('steps' in quoteData) {
-        // Multi-hop swap
+      // Both direct and multi-hop swaps now use the 'steps' format
+      if ('steps' in quoteData && quoteData.steps && quoteData.steps.length > 0) {
+        // Use steps from quote data (works for both direct and multi-hop)
         for (const step of quoteData.steps) {
           hops.push({
-            tokenIn: step.from as Address,
-            tokenOut: step.to as Address,
+            tokenIn: step.fromAddress as Address,
+            tokenOut: step.toAddress as Address,
             amountOut: BigInt(step.amountOut),
           });
         }
+      } else if ('bestShard' in quoteData) {
+        // Fallback for old bestShard format (shouldn't happen with updated backend)
+        hops.push({
+          tokenIn: fromToken,
+          tokenOut: toToken,
+          amountOut: BigInt(quoteData.bestShard.amountOut),
+        });
       } else {
-        throw new Error('Invalid quote data format');
+        throw new Error('Invalid quote data format - missing steps');
       }
 
       // Calculate maxAmountIn with slippage
+      // IMPORTANT: Add extra slippage (2%) because backend estimate might be lower than actual
       const slippage = slippageBps || DEFAULT_SLIPPAGE * 100; // Convert to bps
-      const baseAmountIn =
-        'bestShard' in quoteData
-          ? BigInt(quoteData.bestShard.amountIn)
-          : BigInt(quoteData.amountIn);
+      const baseAmountIn = BigInt(quoteData.amountIn);
+      
+      // Add 2% extra slippage on top of user's slippage to account for estimation differences
+      const extraSlippage = 200; // 2% in basis points
+      const totalSlippage = slippage + extraSlippage;
+      
+      const maxAmountIn = baseAmountIn + (baseAmountIn * BigInt(totalSlippage)) / 10000n;
 
-      const maxAmountIn = baseAmountIn + (baseAmountIn * BigInt(slippage)) / 10000n;
+      console.log('Swap path calculation:', {
+        baseAmountIn: baseAmountIn.toString(),
+        slippage: `${slippage / 100}%`,
+        extraSlippage: `${extraSlippage / 100}%`,
+        totalSlippage: `${totalSlippage / 100}%`,
+        maxAmountIn: maxAmountIn.toString(),
+        hops: hops.map(h => ({
+          tokenIn: h.tokenIn,
+          tokenOut: h.tokenOut,
+          amountOut: h.amountOut.toString()
+        }))
+      });
 
       // Calculate deadline (current timestamp + minutes)
       const deadlineMinutes = deadline || DEFAULT_DEADLINE;
@@ -124,7 +145,7 @@ export function useSwapExecution(): UseSwapExecutionReturn {
    */
   const executeSwap = useCallback(
     async (params: SwapParams) => {
-      if (!userAddress) {
+      if (!userAddress || !chainId) {
         throw new Error('Wallet not connected');
       }
 
@@ -147,20 +168,19 @@ export function useSwapExecution(): UseSwapExecutionReturn {
 
         setSwapState('signing');
 
-        // Execute swap
-        await swap({
+        console.log('Calling swap contract...');
+
+        // Execute swap - this will open the wallet for signature
+        // @ts-ignore - wagmi v2 type inference issue with complex ABIs
+        swap({
           address: routerAddress,
           abi: CROSS_POOL_ROUTER_ABI,
           functionName: 'swapExactOutput',
           args: [swapParams],
         });
 
-        setSwapState('confirming');
-
-        toast({
-          title: 'Transaction Submitted',
-          description: 'Waiting for confirmation...',
-        });
+        // State will be updated by useEffect when transaction is submitted
+        console.log('Swap contract call initiated, waiting for signature...');
       } catch (error: any) {
         console.error('Swap execution failed:', error);
         setSwapState('error');
@@ -179,17 +199,42 @@ export function useSwapExecution(): UseSwapExecutionReturn {
 
   // Update state based on transaction status
   const updateState = useCallback(() => {
+    console.log('Transaction state:', {
+      isSwapPending,
+      isSwapConfirming,
+      isSwapSuccess,
+      hasSwapHash: !!swapHash,
+      swapError: swapError?.message,
+      swapReceiptError: swapReceiptError?.message,
+    });
+
     if (isSwapPending) {
+      console.log('Setting state to: signing');
       setSwapState('signing');
-    } else if (isSwapConfirming) {
+    } else if (swapHash && isSwapConfirming) {
+      console.log('Setting state to: confirming, txHash:', swapHash);
       setSwapState('confirming');
+      // Only show toast once per transaction
+      if (submittedToastShown.current !== swapHash) {
+        submittedToastShown.current = swapHash;
+        toast({
+          title: 'Transaction Submitted',
+          description: `Waiting for confirmation... Hash: ${swapHash.slice(0, 10)}...`,
+        });
+      }
     } else if (isSwapSuccess) {
+      console.log('Setting state to: success');
       setSwapState('success');
-      toast({
-        title: 'Swap Successful!',
-        description: 'Your transaction has been confirmed',
-      });
+      // Only show toast once per transaction
+      if (swapHash && successToastShown.current !== swapHash) {
+        successToastShown.current = swapHash;
+        toast({
+          title: 'Swap Successful!',
+          description: 'Your transaction has been confirmed',
+        });
+      }
     } else if (swapError || swapReceiptError) {
+      console.log('Setting state to: error');
       setSwapState('error');
       const errorMessage = swapError?.message || swapReceiptError?.message || 'Transaction failed';
       toast({
@@ -198,16 +243,18 @@ export function useSwapExecution(): UseSwapExecutionReturn {
         variant: 'destructive',
       });
     }
-  }, [isSwapPending, isSwapConfirming, isSwapSuccess, swapError, swapReceiptError, toast]);
+  }, [isSwapPending, isSwapConfirming, isSwapSuccess, swapHash, swapError, swapReceiptError, toast]);
 
-  // Auto-update state
-  useState(() => {
+  // Auto-update state when transaction status changes
+  useEffect(() => {
     updateState();
-  });
+  }, [updateState]);
 
   const reset = () => {
     resetSwap();
     setSwapState('idle');
+    submittedToastShown.current = null;
+    successToastShown.current = null;
   };
 
   return {

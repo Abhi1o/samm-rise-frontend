@@ -140,7 +140,7 @@ export function useTokenApproval({
     const approvalAmount = amount || MAX_UINT256;
 
     try {
-      await approve({
+      approve({
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: 'approve',

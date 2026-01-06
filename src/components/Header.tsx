@@ -1,19 +1,26 @@
-import { Wallet, Menu, X, ChevronDown, Loader2 } from "lucide-react";
+import { Wallet, Menu, X, ChevronDown, Loader2, Droplets } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { formatAddress } from "@/utils/formatters";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { chainMetadata } from "@/config/chains";
+import { TokenFaucetModal } from "./TokenFaucetModal";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
+  const [faucetOpen, setFaucetOpen] = useState(false);
   const { isConnected } = useAccount();
+  const chainId = useChainId();
   const { selectedNetwork, availableNetworks, isLoading, switchNetwork } = useNetwork();
+
+  // Testnet chains where faucet is available
+  const TESTNET_CHAINS = [11155931, 11155111]; // RiseChain Testnet, Sepolia
+  const isTestnet = chainId ? TESTNET_CHAINS.includes(chainId) : false;
 
   // Get current network metadata
   const currentNetworkMeta = selectedNetwork ? chainMetadata[selectedNetwork.chainId] : null;
@@ -118,6 +125,20 @@ const Header = () => {
                 )}
               </div>
 
+              {/* Faucet Button (only on testnet) */}
+              {/* TODO: Re-enable when faucet contract is configured */}
+              {/* {isTestnet && isConnected && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setFaucetOpen(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Droplets className="w-4 h-4" />
+                  Faucet
+                </Button>
+              )} */}
+
               <ConnectButton.Custom>
                 {({
                   account,
@@ -207,6 +228,18 @@ const Header = () => {
                     ))}
                   </select>
                 </div>
+                {/* Faucet Button (Mobile - only on testnet) */}
+                {/* TODO: Re-enable when faucet contract is configured */}
+                {/* {isTestnet && isConnected && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setFaucetOpen(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <Droplets className="w-4 h-4" />
+                    Request Test Tokens
+                  </Button>
+                )} */}
                 <ConnectButton.Custom>
                   {({
                     account,
@@ -235,6 +268,10 @@ const Header = () => {
           )}
         </div>
       </div>
+
+      {/* Token Faucet Modal */}
+      {/* TODO: Re-enable when faucet contract is configured */}
+      {/* <TokenFaucetModal isOpen={faucetOpen} onClose={() => setFaucetOpen(false)} /> */}
     </header>
   );
 };

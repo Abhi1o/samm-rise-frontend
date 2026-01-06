@@ -12,6 +12,10 @@ import { commonTokens } from "@/config/tokens";
 import { useTokenApproval } from "@/hooks/useTokenApproval";
 import { useSwapExecution } from "@/hooks/useSwapExecution";
 import { getCrossPoolRouter } from "@/config/contracts";
+import { useTokenBalance } from "@/hooks/useTokenBalance";
+import { useTokenPrice } from "@/hooks/useTokenPrice";
+import { Token as ConfigToken } from "@/types/tokens";
+import { formatUSD } from "@/utils/formatters";
 
 const EnhancedSwapCard = () => {
   const { toast } = useToast();
@@ -34,6 +38,7 @@ const EnhancedSwapCard = () => {
   const [fromToken, setFromToken] = useState({
     symbol: networkTokens[3]?.symbol || "USDC",
     icon: networkTokens[3]?.icon || "💲",
+    logoURI: networkTokens[3]?.logoURI,
     balance: "0.00",
     address: networkTokens[3]?.address || "",
     decimals: networkTokens[3]?.decimals || 6,
@@ -42,6 +47,7 @@ const EnhancedSwapCard = () => {
   const [toToken, setToToken] = useState({
     symbol: networkTokens[4]?.symbol || "USDT",
     icon: networkTokens[4]?.icon || "💵",
+    logoURI: networkTokens[4]?.logoURI,
     balance: "0.00",
     address: networkTokens[4]?.address || "",
     decimals: networkTokens[4]?.decimals || 6,
@@ -78,12 +84,50 @@ const EnhancedSwapCard = () => {
   // Swap execution hook
   const { executeSwap, swapState, isLoading: isSwapping, reset: resetSwap } = useSwapExecution();
 
+  // Create ConfigToken objects for balance/price hooks
+  const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);
+  const toTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === toToken.address);
+
+  // Fetch balances for from and to tokens
+  const {
+    balanceFormatted: fromBalanceFormatted,
+    isLoading: fromBalanceLoading,
+    refetch: refetchFromBalance,
+  } = useTokenBalance(fromTokenConfig);
+  const {
+    balanceFormatted: toBalanceFormatted,
+    isLoading: toBalanceLoading,
+    refetch: refetchToBalance,
+  } = useTokenBalance(toTokenConfig);
+
+  // Fetch prices for from and to tokens
+  const { price: fromPrice, isLoading: fromPriceLoading } = useTokenPrice(fromTokenConfig);
+  const { price: toPrice, isLoading: toPriceLoading } = useTokenPrice(toTokenConfig);
+
+  // Calculate USD values
+  const fromValueUSD = fromValue && fromPrice ? formatUSD(parseFloat(fromValue) * fromPrice) : undefined;
+  const toValueUSD = toValue && toPrice ? formatUSD(parseFloat(toValue) * toPrice) : undefined;
+
+  // Update token balances when they change
+  useEffect(() => {
+    if (fromBalanceFormatted !== undefined && fromBalanceFormatted !== fromToken.balance) {
+      setFromToken(prev => ({ ...prev, balance: fromBalanceFormatted }));
+    }
+  }, [fromBalanceFormatted]);
+
+  useEffect(() => {
+    if (toBalanceFormatted !== undefined && toBalanceFormatted !== toToken.balance) {
+      setToToken(prev => ({ ...prev, balance: toBalanceFormatted }));
+    }
+  }, [toBalanceFormatted]);
+
   // Reset tokens when network changes
   useEffect(() => {
     if (selectedNetwork && networkTokens.length > 0) {
       setFromToken({
         symbol: networkTokens[3]?.symbol || networkTokens[0]?.symbol || "USDC",
         icon: networkTokens[3]?.icon || networkTokens[0]?.icon || "💲",
+        logoURI: networkTokens[3]?.logoURI || networkTokens[0]?.logoURI,
         balance: "0.00",
         address: networkTokens[3]?.address || networkTokens[0]?.address || "",
         decimals: networkTokens[3]?.decimals || networkTokens[0]?.decimals || 6,
@@ -91,6 +135,7 @@ const EnhancedSwapCard = () => {
       setToToken({
         symbol: networkTokens[4]?.symbol || networkTokens[1]?.symbol || "USDT",
         icon: networkTokens[4]?.icon || networkTokens[1]?.icon || "💵",
+        logoURI: networkTokens[4]?.logoURI || networkTokens[1]?.logoURI,
         balance: "0.00",
         address: networkTokens[4]?.address || networkTokens[1]?.address || "",
         decimals: networkTokens[4]?.decimals || networkTokens[1]?.decimals || 6,
@@ -121,6 +166,29 @@ const EnhancedSwapCard = () => {
     }
   }, [fromToken.address, toToken.address, fromValue]);
 
+  // Clear inputs and refresh balances after successful swap
+  useEffect(() => {
+    if (swapState === 'success') {
+      // Clear input values
+      setFromValue("");
+      setToValue("");
+      setQuoteData(null);
+      setRouteInfo("");
+
+      // Refresh token balances immediately
+      console.log('Refreshing balances after successful swap...');
+      refetchFromBalance();
+      refetchToBalance();
+
+      // Reset swap state after a delay
+      const timer = setTimeout(() => {
+        resetSwap();
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [swapState, resetSwap, refetchFromBalance, refetchToBalance]);
+
 
 
   const fetchQuote = async () => {
@@ -136,8 +204,21 @@ const EnhancedSwapCard = () => {
     try {
       setLoading(true);
       
+      // Validate inputs
+      if (!fromValue || parseFloat(fromValue) <= 0) {
+        console.log('Invalid amount:', fromValue);
+        setToValue("");
+        setQuoteData(null);
+        return;
+      }
+
+      if (!fromToken.address || !toToken.address) {
+        console.error('Missing token addresses:', { fromToken, toToken });
+        throw new Error('Token addresses not configured');
+      }
+
       // Convert amount to smallest unit based on token decimals
-      const amountInSmallestUnit = (parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
+      const amountInSmallestUnit = Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
       
       console.log('Fetching quote:', {
         chain: selectedNetwork.name,
@@ -146,7 +227,9 @@ const EnhancedSwapCard = () => {
         fromToken: fromToken.symbol,
         fromAddress: fromToken.address,
         toToken: toToken.symbol,
-        toAddress: toToken.address
+        toAddress: toToken.address,
+        fromDecimals: fromToken.decimals,
+        toDecimals: toToken.decimals
       });
       
       // Try to get quote from backend using network name
@@ -157,28 +240,41 @@ const EnhancedSwapCard = () => {
         toToken.address
       );
 
-      setQuoteData(quote);
-
       console.log('Quote received:', quote);
 
-      // Check if it's a direct swap or multi-hop
-      if ('bestShard' in quote) {
-        // Direct swap
-        const outputAmount = parseFloat(quote.bestShard.amountOut) / Math.pow(10, toToken.decimals);
-        setToValue(outputAmount.toFixed(6));
-        setRouteInfo(`Direct swap via ${quote.bestShard.shardName}`);
-        console.log('Direct swap:', outputAmount, toToken.symbol);
-      } else if ('route' in quote) {
-        // Multi-hop
+      // Validate quote response
+      if (!quote || typeof quote !== 'object') {
+        throw new Error('Invalid quote response from backend');
+      }
+
+      setQuoteData(quote);
+
+      // Both direct and multi-hop now use the same format with 'route' field
+      if (quote.route === 'direct' || quote.route === 'multi-hop') {
+        if (!quote.amountOut) {
+          throw new Error('Quote missing amountOut field');
+        }
+
         const outputAmount = parseFloat(quote.amountOut) / Math.pow(10, toToken.decimals);
         setToValue(outputAmount.toFixed(6));
-        setRouteInfo(`Multi-hop: ${quote.path.join(' → ')}`);
-        console.log('Multi-hop swap:', outputAmount, toToken.symbol);
+        
+        if (quote.route === 'direct') {
+          setRouteInfo(`Direct swap via ${quote.shards?.[0] || 'Unknown'}`);
+        } else {
+          setRouteInfo(`Multi-hop: ${quote.path?.join(' → ') || 'Unknown route'}`);
+        }
+        
+        console.log(`${quote.route} swap:`, outputAmount, toToken.symbol);
+      } else {
+        // Fallback for unexpected format
+        console.error('Unexpected quote format:', quote);
+        throw new Error(`Invalid quote format: route=${quote.route}`);
       }
     } catch (error: any) {
       console.error('Failed to fetch quote:', error);
       console.error('Error details:', {
         message: error.message,
+        stack: error.stack,
         fromToken: fromToken.symbol,
         fromAddress: fromToken.address,
         toToken: toToken.symbol,
@@ -225,6 +321,7 @@ const EnhancedSwapCard = () => {
     const tokenData = {
       symbol: selectedToken.symbol,
       icon: selectedToken.icon || token.icon,
+      logoURI: selectedToken.logoURI,
       balance: token.balance || "0.00",
       address: selectedToken.address,
       decimals: selectedToken.decimals,
@@ -274,7 +371,7 @@ const EnhancedSwapCard = () => {
     try {
       // Step 1: Approve token if needed
       if (needsTokenApproval && needsApproval) {
-        await approveToken();
+        approveToken();
         toast({
           title: "Approval Pending",
           description: "Please sign the approval transaction in your wallet",
@@ -283,7 +380,7 @@ const EnhancedSwapCard = () => {
       }
 
       // Step 2: Execute swap
-      await executeSwap({
+      executeSwap({
         fromToken: fromToken.address as Address,
         toToken: toToken.address as Address,
         amountIn: fromValue,
@@ -353,6 +450,7 @@ const EnhancedSwapCard = () => {
             token={fromToken}
             value={fromValue}
             onChange={setFromValue}
+            usdValue={fromValueUSD}
             onTokenClick={() => openTokenModal("from")}
           />
 
@@ -372,6 +470,7 @@ const EnhancedSwapCard = () => {
             token={toToken}
             value={loading ? "Loading..." : toValue}
             onChange={setToValue}
+            usdValue={toValueUSD}
             isOutput
             onTokenClick={() => openTokenModal("to")}
           />
@@ -394,40 +493,30 @@ const EnhancedSwapCard = () => {
                 <span className="text-foreground font-mono text-xs">{getRate()}</span>
               </div>
               
-              {'bestShard' in quoteData && (
-                <>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Shard</span>
-                    <span className="text-chrome font-mono text-xs">{quoteData.bestShard.shardName}</span>
-                  </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Fee</span>
-                    <span className="text-foreground font-mono text-xs">
-                      {formatFee(quoteData.bestShard.tradeFee, fromToken.decimals)} {fromToken.symbol}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Price Impact</span>
-                    <span className={`font-mono text-xs ${parseFloat(quoteData.bestShard.priceImpact) > 1 ? 'text-red-500' : 'text-green-500'}`}>
-                      {quoteData.bestShard.priceImpact}%
-                    </span>
-                  </div>
-                </>
+              {/* Show shard info for direct swaps */}
+              {quoteData.route === 'direct' && quoteData.shards && quoteData.shards.length > 0 && (
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">Shard</span>
+                  <span className="text-chrome font-mono text-xs">{quoteData.shards[0]}</span>
+                </div>
               )}
-
-              {'steps' in quoteData && (
-                <>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Hops</span>
-                    <span className="text-chrome font-mono text-xs">{quoteData.steps.length}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total Fee</span>
-                    <span className="text-foreground font-mono text-xs">
-                      {formatFee(quoteData.totalFee, fromToken.decimals)} {fromToken.symbol}
-                    </span>
-                  </div>
-                </>
+              
+              {/* Show hops for multi-hop swaps */}
+              {quoteData.route === 'multi-hop' && quoteData.steps && (
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">Hops</span>
+                  <span className="text-chrome font-mono text-xs">{quoteData.steps.length}</span>
+                </div>
+              )}
+              
+              {/* Show total fee */}
+              {quoteData.totalFee && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total Fee</span>
+                  <span className="text-foreground font-mono text-xs">
+                    {formatFee(quoteData.totalFee, fromToken.decimals)} {fromToken.symbol}
+                  </span>
+                </div>
               )}
             </div>
           )}
