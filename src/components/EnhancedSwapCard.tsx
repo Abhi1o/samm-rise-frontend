@@ -218,7 +218,21 @@ const EnhancedSwapCard = () => {
       }
 
       // Convert amount to smallest unit based on token decimals
-      const amountInSmallestUnit = Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
+      // IMPORTANT: Use string manipulation to avoid JavaScript number precision loss
+      // For 18-decimal tokens, Math.floor(parseFloat(value) * 10^18) loses precision
+      let amountInSmallestUnit: string;
+      
+      if (fromToken.decimals <= 8) {
+        // For tokens with ≤8 decimals (like USDC, USDT, WBTC), Math is safe
+        amountInSmallestUnit = Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
+      } else {
+        // For tokens with >8 decimals (like WETH, DAI, LINK), use string manipulation
+        const [whole = '0', fraction = ''] = fromValue.split('.');
+        const paddedFraction = fraction.padEnd(fromToken.decimals, '0').slice(0, fromToken.decimals);
+        amountInSmallestUnit = whole + paddedFraction;
+        // Remove leading zeros
+        amountInSmallestUnit = BigInt(amountInSmallestUnit).toString();
+      }
       
       console.log('Fetching quote:', {
         chain: selectedNetwork.name,
@@ -379,12 +393,24 @@ const EnhancedSwapCard = () => {
         return; // User will click swap again after approval completes
       }
 
+      // Use the exact wei values from the quote response
+      // Don't convert display values back to wei (loses precision for 18-decimal tokens)
+      const amountInWei = quoteData.amountIn;
+      const amountOutWei = quoteData.amountOut;
+
+      console.log('Executing swap with exact quote values:', {
+        amountInWei,
+        amountOutWei,
+        fromToken: fromToken.symbol,
+        toToken: toToken.symbol
+      });
+
       // Step 2: Execute swap
       executeSwap({
         fromToken: fromToken.address as Address,
         toToken: toToken.address as Address,
-        amountIn: fromValue,
-        amountOut: toValue,
+        amountIn: amountInWei,
+        amountOut: amountOutWei,
         fromDecimals: fromToken.decimals,
         toDecimals: toToken.decimals,
         quoteData,

@@ -103,12 +103,17 @@ export function useSwapExecution(): UseSwapExecutionReturn {
       }
 
       // Calculate maxAmountIn with slippage
-      // IMPORTANT: Add extra slippage (2%) because backend estimate might be lower than actual
+      // CRITICAL: For swapExactOutput, we need higher slippage because:
+      // 1. Backend calculates max output for given input (forward: input → max output)
+      // 2. Contract calculates required input for exact output (reverse: output → required input)
+      // 3. Due to SAMM curve non-linearity, these calculations don't match exactly
+      // 4. The contract may need MORE input than the backend's estimate to guarantee the output
       const slippage = slippageBps || DEFAULT_SLIPPAGE * 100; // Convert to bps
       const baseAmountIn = BigInt(quoteData.amountIn);
       
-      // Add 2% extra slippage on top of user's slippage to account for estimation differences
-      const extraSlippage = 200; // 2% in basis points
+      // Use 5% extra slippage to handle the forward/reverse calculation mismatch
+      // This ensures the contract has enough input allowance to achieve the desired output
+      const extraSlippage = 500; // 5% in basis points
       const totalSlippage = slippage + extraSlippage;
       
       const maxAmountIn = baseAmountIn + (baseAmountIn * BigInt(totalSlippage)) / 10000n;
@@ -119,6 +124,8 @@ export function useSwapExecution(): UseSwapExecutionReturn {
         extraSlippage: `${extraSlippage / 100}%`,
         totalSlippage: `${totalSlippage / 100}%`,
         maxAmountIn: maxAmountIn.toString(),
+        quoteDataAmountIn: quoteData.amountIn,
+        quoteDataAmountOut: quoteData.amountOut,
         hops: hops.map(h => ({
           tokenIn: h.tokenIn,
           tokenOut: h.tokenOut,
