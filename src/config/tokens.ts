@@ -75,7 +75,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'WETH',
       name: 'Wrapped Ether',
-      address: '0x489A4BD9a9698e9B0755D1741DD254C90afbA594',
+      address: '0xb8800740f39714E24FB6Bf11A78a1B78b7bE6105',
       decimals: 18,
       chainId: riseChain.id,
       icon: '⟠',
@@ -85,7 +85,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'WBTC',
       name: 'Wrapped Bitcoin',
-      address: '0xD08FB4eB0E146aA02a6590221E7d74f4fc1Ce6a3',
+      address: '0x52515d613B86dc248B07A081f5E2D37B72370Fc1',
       decimals: 8,
       chainId: riseChain.id,
       icon: '₿',
@@ -95,7 +95,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'USDC',
       name: 'USD Coin',
-      address: '0x3FfDe07200eE114f0b173505735563bd93D7814f',
+      address: '0x5316c740dC404EA7C19725D7d617F64051A90fC2',
       decimals: 6,
       chainId: riseChain.id,
       icon: '💲',
@@ -105,7 +105,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'USDT',
       name: 'Tether USD',
-      address: '0x23dd84CBc68474BA537d76e11D29239a2CB9754F',
+      address: '0xa5076fDBCfAB63DC528783E6C9E6B7bef0Ed724c',
       decimals: 6,
       chainId: riseChain.id,
       icon: '💵',
@@ -115,7 +115,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'DAI',
       name: 'Dai Stablecoin',
-      address: '0xfF9F562e690c86818a84242b38E23820c3caE20c',
+      address: '0x7d34fF25da808167F9a75aD0a21d89697e8a87Ad',
       decimals: 18,
       chainId: riseChain.id,
       icon: '◈',
@@ -125,7 +125,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'LINK',
       name: 'Chainlink',
-      address: '0x2C171917A571812FAa3cFd945467f99f700BCBdB',
+      address: '0xC08E8f25B84C5b51AF0D9B7a421E85ce67D97B94',
       decimals: 18,
       chainId: riseChain.id,
       icon: '⬡',
@@ -135,7 +135,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'UNI',
       name: 'Uniswap',
-      address: '0xf3D5C03C1437fb927d183Fe1FfCB8325b1cc1598',
+      address: '0x1483Fd48E972B276794119d9F59Cc3c7F4a161BC',
       decimals: 18,
       chainId: riseChain.id,
       icon: '🦄',
@@ -145,7 +145,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'AAVE',
       name: 'Aave',
-      address: '0xad4bA4E0Ca3090946eEC92b4FB570503Fab890f9',
+      address: '0xC3168a5dA5A37E33Bb280d223BEE4B607C59811e',
       decimals: 18,
       chainId: riseChain.id,
       icon: '👻',

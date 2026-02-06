@@ -7,8 +7,8 @@ import { riseChain } from './chains';
  */
 export const CONTRACT_ADDRESSES = {
   [riseChain.id]: {
-    crossPoolRouter: '0x8a4ED210afE6Ed5B374CFEcBA2A5aD283FAB2fDa' as Address,
-    factory: '0xA74a8271C02237083c53eEE4153C07252F3925a3' as Address,
+    crossPoolRouter: '0x68A1b2C247b5E73d161fDb5A43299ff7672A8d62' as Address,
+    factory: '0xB312FC3A8769082e285a340c18aD2a3f88A54327' as Address,
     tokenFaucet: '0x983A8fe1408bBba8a1EF02641E5ECD05b9a4BA1c' as Address,
   },
 } as const;
