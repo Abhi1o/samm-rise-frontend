@@ -64,6 +64,7 @@ function getProjectId(): string {
 
 /**
  * Wagmi configuration with RainbowKit
+ * Uses getDefaultConfig which automatically includes MetaMask and other popular wallets
  */
 export const wagmiConfig = getDefaultConfig({
   appName: 'SAMM DEX',
@@ -78,4 +79,6 @@ export const wagmiConfig = getDefaultConfig({
     [base.id]: http(getRpcUrl(base)),
   },
   ssr: false,
+  // Enable wallet detection
+  multiInjectedProviderDiscovery: true,
 });
