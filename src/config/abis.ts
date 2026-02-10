@@ -154,4 +154,64 @@ export const SAMM_POOL_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'amountADesired', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountBDesired', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountAMin', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountBMin', type: 'uint256' },
+      { internalType: 'address', name: 'to', type: 'address' },
+    ],
+    name: 'addLiquidity',
+    outputs: [
+      { internalType: 'uint256', name: 'amountA', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountB', type: 'uint256' },
+      { internalType: 'uint256', name: 'liquidity', type: 'uint256' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'tokenA',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'tokenB',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getPoolState',
+    outputs: [
+      {
+        components: [
+          { internalType: 'address', name: 'tokenA', type: 'address' },
+          { internalType: 'address', name: 'tokenB', type: 'address' },
+          { internalType: 'uint256', name: 'reserveA', type: 'uint256' },
+          { internalType: 'uint256', name: 'reserveB', type: 'uint256' },
+          { internalType: 'uint256', name: 'totalSupply', type: 'uint256' },
+          { internalType: 'uint256', name: 'tradeFeeNumerator', type: 'uint256' },
+          { internalType: 'uint256', name: 'tradeFeeDenominator', type: 'uint256' },
+          { internalType: 'uint256', name: 'ownerFeeNumerator', type: 'uint256' },
+          { internalType: 'uint256', name: 'ownerFeeDenominator', type: 'uint256' },
+        ],
+        internalType: 'struct ISAMMPool.PoolState',
+        name: '',
+        type: 'tuple',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
+
+// Export individual ABIs with proper names
+export const SAMMPoolABI = SAMM_POOL_ABI;
+export const CrossPoolRouterABI = CROSS_POOL_ROUTER_ABI;
+export const TokenFaucetABI = TOKEN_FAUCET_ABI;
