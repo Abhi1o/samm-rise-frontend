@@ -74,35 +74,33 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   });
 
   // Get token balances
-  const { balance: balance0, isLoading: balance0Loading } = useTokenBalance(
-    selectedToken0?.address as Address,
-    userAddress
+  const { balanceBigInt: balance0, isLoading: balance0Loading } = useTokenBalance(
+    selectedToken0
   );
-  const { balance: balance1, isLoading: balance1Loading } = useTokenBalance(
-    selectedToken1?.address as Address,
-    userAddress
+  const { balanceBigInt: balance1, isLoading: balance1Loading } = useTokenBalance(
+    selectedToken1
   );
 
   // Token approvals
   const {
     needsApproval: needsApproval0,
-    approve: approve0,
+    approveToken: approve0,
     isApproving: isApproving0,
-  } = useTokenApproval(
-    selectedToken0?.address as Address,
-    selectedPool?.address as Address,
-    amount0 ? parseUnits(amount0, selectedToken0?.decimals || 18) : 0n
-  );
+  } = useTokenApproval({
+    tokenAddress: selectedToken0?.address as Address,
+    spenderAddress: selectedPool?.address as Address,
+    amountNeeded: amount0 ? parseUnits(amount0, selectedToken0?.decimals || 18) : 0n,
+  });
 
   const {
     needsApproval: needsApproval1,
-    approve: approve1,
+    approveToken: approve1,
     isApproving: isApproving1,
-  } = useTokenApproval(
-    selectedToken1?.address as Address,
-    selectedPool?.address as Address,
-    amount1 ? parseUnits(amount1, selectedToken1?.decimals || 18) : 0n
-  );
+  } = useTokenApproval({
+    tokenAddress: selectedToken1?.address as Address,
+    spenderAddress: selectedPool?.address as Address,
+    amountNeeded: amount1 ? parseUnits(amount1, selectedToken1?.decimals || 18) : 0n,
+  });
 
   // Add liquidity hook
   const { addLiquidity, isLoading: isAddingLiquidity } = useAddLiquidity();

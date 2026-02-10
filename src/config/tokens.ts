@@ -414,7 +414,8 @@ export function findToken(chainId: number, address: string): Token | undefined {
 /**
  * Check if an address is the native token
  */
-export function isNativeToken(address: string): boolean {
+export function isNativeToken(address: string | undefined): boolean {
+  if (!address) return false;
   return address.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase();
 }
 
