@@ -1,45 +1,86 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Shield } from "lucide-react";
+import { ChevronDown, Shield, AlertCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { useNetwork } from "@/contexts/NetworkContext";
+import { getTokensForChain } from "@/config/tokens";
+import TokenLogo from "./TokenLogo";
+import { useToast } from "@/hooks/use-toast";
 
 interface CreatePoolModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const TOKENS = [
-  { symbol: "ETH", name: "Ethereum", icon: "⟠" },
-  { symbol: "USDC", name: "USD Coin", icon: "💲" },
-  { symbol: "USDT", name: "Tether", icon: "💵" },
-  { symbol: "WBTC", name: "Wrapped Bitcoin", icon: "₿" },
-  { symbol: "DAI", name: "Dai", icon: "◈" },
-];
-
-const FEE_TIERS = ["0.01%", "0.05%", "0.25%", "0.30%", "1.00%"];
-
 const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
-  const [token0, setToken0] = useState(TOKENS[0]);
-  const [token1, setToken1] = useState(TOKENS[1]);
+  const { selectedNetwork } = useNetwork();
+  const { toast } = useToast();
+
+  // Get tokens for current network
+  const tokens = selectedNetwork ? getTokensForChain(selectedNetwork.chainId) : [];
+
+  // State
+  const [selectedToken0, setSelectedToken0] = useState(tokens[0]);
+  const [selectedToken1, setSelectedToken1] = useState(tokens[1]);
   const [token0DropdownOpen, setToken0DropdownOpen] = useState(false);
   const [token1DropdownOpen, setToken1DropdownOpen] = useState(false);
-  const [selectedFee, setSelectedFee] = useState("0.25%");
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.50");
   const [mevProtect, setMevProtect] = useState(false);
 
+  // SAMM Parameters (advanced)
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [beta1, setBeta1] = useState("1000000"); // Default SAMM parameter
+  const [rmin, setRmin] = useState("500000"); // Default SAMM parameter
+  const [rmax, setRmax] = useState("2000000"); // Default SAMM parameter
+  const [cThreshold, setCThreshold] = useState("100000"); // Default SAMM parameter
+
+  // Update tokens when network changes
+  useEffect(() => {
+    if (tokens.length >= 2) {
+      setSelectedToken0(tokens[0]);
+      setSelectedToken1(tokens[1]);
+    }
+  }, [selectedNetwork]);
+
+  const handleCreatePool = () => {
+    toast({
+      title: "Pool Creation Coming Soon",
+      description: "Pool creation functionality will be available in the next update. For now, please use existing pools.",
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">Create Pool</DialogTitle>
+          <DialogTitle className="text-xl font-bold">Create SAMM Pool</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 pt-4">
-          {/* Choose Token Pair */}
+          {/* Network Display */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>Network:</span>
+            <span className="font-semibold text-foreground">
+              {selectedNetwork?.displayName || "Not Connected"}
+            </span>
+          </div>
+
+          {/* Info Banner */}
+          <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-primary">SAMM Pool Creation</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                SAMM uses a unique sharded AMM design. Each pool is automatically created with Small, Medium, and Large shards for optimal liquidity distribution.
+              </p>
+            </div>
+          </div>
+
+          {/* Token Pair Selection */}
           <div>
             <p className="text-sm text-primary font-semibold mb-3">CHOOSE TOKEN PAIR</p>
             <div className="flex items-center gap-3">
@@ -49,22 +90,32 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                   onClick={() => setToken0DropdownOpen(!token0DropdownOpen)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors"
                 >
-                  <span className="text-xl">{token0.icon}</span>
-                  <span className="flex-1 text-left font-bold">{token0.symbol}</span>
+                  <TokenLogo
+                    symbol={selectedToken0?.symbol || ""}
+                    logoURI={selectedToken0?.logoURI}
+                    icon={selectedToken0?.icon}
+                    size="sm"
+                  />
+                  <span className="flex-1 text-left font-bold">{selectedToken0?.symbol}</span>
                   <ChevronDown className="w-5 h-5 text-muted-foreground" />
                 </button>
                 {token0DropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-full bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                    {TOKENS.filter(t => t.symbol !== token1.symbol).map((token) => (
+                  <div className="absolute top-full left-0 mt-2 w-full bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
+                    {tokens.filter(t => t.symbol !== selectedToken1?.symbol).map((token) => (
                       <button
                         key={token.symbol}
                         onClick={() => {
-                          setToken0(token);
+                          setSelectedToken0(token);
                           setToken0DropdownOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
                       >
-                        <span className="text-xl">{token.icon}</span>
+                        <TokenLogo
+                          symbol={token.symbol}
+                          logoURI={token.logoURI}
+                          icon={token.icon}
+                          size="sm"
+                        />
                         <span className="font-medium">{token.symbol}</span>
                       </button>
                     ))}
@@ -80,22 +131,32 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                   onClick={() => setToken1DropdownOpen(!token1DropdownOpen)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors"
                 >
-                  <span className="text-xl">{token1.icon}</span>
-                  <span className="flex-1 text-left font-bold">{token1.symbol}</span>
+                  <TokenLogo
+                    symbol={selectedToken1?.symbol || ""}
+                    logoURI={selectedToken1?.logoURI}
+                    icon={selectedToken1?.icon}
+                    size="sm"
+                  />
+                  <span className="flex-1 text-left font-bold">{selectedToken1?.symbol}</span>
                   <ChevronDown className="w-5 h-5 text-muted-foreground" />
                 </button>
                 {token1DropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-full bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                    {TOKENS.filter(t => t.symbol !== token0.symbol).map((token) => (
+                  <div className="absolute top-full left-0 mt-2 w-full bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
+                    {tokens.filter(t => t.symbol !== selectedToken0?.symbol).map((token) => (
                       <button
                         key={token.symbol}
                         onClick={() => {
-                          setToken1(token);
+                          setSelectedToken1(token);
                           setToken1DropdownOpen(false);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
                       >
-                        <span className="text-xl">{token.icon}</span>
+                        <TokenLogo
+                          symbol={token.symbol}
+                          logoURI={token.logoURI}
+                          icon={token.icon}
+                          size="sm"
+                        />
                         <span className="font-medium">{token.symbol}</span>
                       </button>
                     ))}
@@ -105,46 +166,25 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             </div>
           </div>
 
-          {/* Fee Level */}
-          <div>
-            <p className="text-sm text-primary font-semibold mb-3">FEE LEVEL</p>
-            <button className="px-4 py-2.5 rounded-xl bg-secondary/80 border border-border font-medium">
-              {selectedFee}
-            </button>
-          </div>
-
-          {/* Fee Tier Selection */}
-          <div className="flex flex-wrap gap-2">
-            {FEE_TIERS.map((fee) => (
-              <button
-                key={fee}
-                onClick={() => setSelectedFee(fee)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                  selectedFee === fee
-                    ? "bg-secondary/80 border border-border text-foreground"
-                    : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50"
-                }`}
-              >
-                {fee}
-              </button>
-            ))}
-          </div>
-
-          {/* Deposit Amount */}
+          {/* Initial Liquidity */}
           <div>
             <div className="flex justify-between items-center mb-3">
-              <p className="text-sm text-primary font-semibold">DEPOSIT AMOUNT</p>
-              <span className="text-sm text-muted-foreground">📋 0</span>
+              <p className="text-sm text-primary font-semibold">INITIAL LIQUIDITY</p>
             </div>
             
             {/* Token 0 Input */}
             <div className="bg-secondary/30 rounded-xl p-4 mb-3 border border-border/50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{token0.icon}</span>
+                  <TokenLogo
+                    symbol={selectedToken0?.symbol || ""}
+                    logoURI={selectedToken0?.logoURI}
+                    icon={selectedToken0?.icon}
+                    size="sm"
+                  />
                   <div>
-                    <p className="font-bold">{token0.symbol}</p>
-                    <p className="text-xs text-muted-foreground">Ethereum</p>
+                    <p className="font-bold">{selectedToken0?.symbol}</p>
+                    <p className="text-xs text-muted-foreground">{selectedToken0?.name}</p>
                   </div>
                 </div>
                 <Input
@@ -157,18 +197,19 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
               </div>
             </div>
 
-            <div className="flex justify-end mb-3">
-              <span className="text-sm text-muted-foreground">📋 0</span>
-            </div>
-
             {/* Token 1 Input */}
             <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{token1.icon}</span>
+                  <TokenLogo
+                    symbol={selectedToken1?.symbol || ""}
+                    logoURI={selectedToken1?.logoURI}
+                    icon={selectedToken1?.icon}
+                    size="sm"
+                  />
                   <div>
-                    <p className="font-bold">{token1.symbol}</p>
-                    <p className="text-xs text-muted-foreground">Ethereum</p>
+                    <p className="font-bold">{selectedToken1?.symbol}</p>
+                    <p className="text-xs text-muted-foreground">{selectedToken1?.name}</p>
                   </div>
                 </div>
                 <Input
@@ -180,6 +221,62 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Advanced SAMM Parameters */}
+          <div>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-sm text-primary hover:underline mb-3"
+            >
+              {showAdvanced ? "Hide" : "Show"} Advanced SAMM Parameters
+            </button>
+            
+            {showAdvanced && (
+              <div className="space-y-3 bg-secondary/20 rounded-xl p-4 border border-border/30">
+                <p className="text-xs text-muted-foreground mb-2">
+                  These parameters control the SAMM curve behavior. Use default values unless you understand the implications.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Beta1</label>
+                    <Input
+                      type="number"
+                      value={beta1}
+                      onChange={(e) => setBeta1(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">R Min</label>
+                    <Input
+                      type="number"
+                      value={rmin}
+                      onChange={(e) => setRmin(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">R Max</label>
+                    <Input
+                      type="number"
+                      value={rmax}
+                      onChange={(e) => setRmax(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">C Threshold</label>
+                    <Input
+                      type="number"
+                      value={cThreshold}
+                      onChange={(e) => setCThreshold(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Slippage Tolerance */}
@@ -203,11 +300,16 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
           <Button
             variant="swap"
             size="lg"
-            className="w-full rounded-xl py-6 text-lg font-bold opacity-50"
-            disabled
+            className="w-full rounded-xl py-6 text-lg font-bold"
+            onClick={handleCreatePool}
+            disabled={!amount0 || !amount1}
           >
-            Enter an amount
+            {!amount0 || !amount1 ? "Enter amounts" : "Create Pool (Coming Soon)"}
           </Button>
+
+          <p className="text-xs text-center text-muted-foreground">
+            Pool creation requires factory owner permissions. Contact the protocol team to create new pools.
+          </p>
         </div>
       </DialogContent>
     </Dialog>
