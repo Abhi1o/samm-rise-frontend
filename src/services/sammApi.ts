@@ -179,9 +179,8 @@ class SAMMApiService {
       console.log(`Auto-detected route: ${route.join(' → ')}`);
     }
 
-    const body = route.length > 2
-      ? { route, amountOut }
-      : { tokenIn, tokenOut, amountOut };
+    // Always use route format for consistency
+    const body = { route, amountOut };
 
     const response = await fetch(`${this.baseUrl}/quote`, {
       method: 'POST',

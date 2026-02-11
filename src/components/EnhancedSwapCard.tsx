@@ -246,33 +246,94 @@ const EnhancedSwapCard = () => {
       // Convert amountIn to human-readable format
       const amountInHuman = (parseFloat(amountInSmallestUnit) / Math.pow(10, fromToken.decimals)).toString();
       
-      // CRITICAL FIX: Backend uses "exact output" model, but UI is "exact input"
-      // Solution: Estimate the output amount first, then get accurate quote
+      // CRITICAL: Backend uses "exact output" model, but UI is "exact input"
+      // Solution: Use a simple estimation for the output amount
+      // The backend will calculate the exact quote based on actual pool reserves
       
-      // Step 1: Get pool reserves to estimate output
-      const poolsResponse = await sammApi.getPoolsForPair(fromToken.symbol, toToken.symbol);
-      if (!poolsResponse.shards || poolsResponse.shards.length === 0) {
-        throw new Error('No pool found for this pair');
+      // Simple estimation: assume 1:1 ratio for stablecoins, use price ratios for others
+      // This is just for the initial quote request - backend will return accurate values
+      let estimatedOut: number;
+      
+      // Try to get a rough estimate based on token prices or direct pool
+      try {
+        // Try to get pool reserves for direct estimation
+        const poolsResponse = await sammApi.getPoolsForPair(fromToken.symbol, toToken.symbol);
+        if (poolsResponse.shards && poolsResponse.shards.length > 0) {
+          // Use the largest pool for estimation (most accurate pricing)
+          const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
+          const reserveIn = parseFloat(largestPool.reserveA);
+          const reserveOut = parseFloat(largestPool.reserveB);
+          
+          // Constant product formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+          const amountInFloat = parseFloat(amountInHuman);
+          estimatedOut = (amountInFloat * reserveOut) / (reserveIn + amountInFloat);
+          
+          console.log('Direct pool estimation:', {
+            amountIn: amountInFloat,
+            reserveIn,
+            reserveOut,
+            estimatedOut
+          });
+        } else {
+          throw new Error('No direct pool, will use multi-hop estimation');
+        }
+      } catch (error) {
+        // No direct pool exists, calculate multi-hop estimation using actual pool reserves
+        console.log('No direct pool found, calculating multi-hop estimation from pool reserves');
+        
+        const amountInFloat = parseFloat(amountInHuman);
+        
+        // Try common intermediary tokens (USDC, WETH, USDT)
+        const intermediaries = ['USDC', 'WETH', 'USDT'];
+        let foundRoute = false;
+        
+        for (const intermediate of intermediaries) {
+          if (intermediate === fromToken.symbol || intermediate === toToken.symbol) continue;
+          
+          try {
+            // Check if both legs exist and get their reserves
+            const leg1Response = await sammApi.getPoolsForPair(fromToken.symbol, intermediate);
+            const leg2Response = await sammApi.getPoolsForPair(intermediate, toToken.symbol);
+            
+            if (leg1Response.shards?.length > 0 && leg2Response.shards?.length > 0) {
+              // Calculate output through this route
+              const pool1 = leg1Response.shards[leg1Response.shards.length - 1];
+              const pool2 = leg2Response.shards[leg2Response.shards.length - 1];
+              
+              // First hop: fromToken → intermediate
+              const reserve1In = parseFloat(pool1.reserveA);
+              const reserve1Out = parseFloat(pool1.reserveB);
+              const intermediateAmount = (amountInFloat * reserve1Out) / (reserve1In + amountInFloat);
+              
+              // Second hop: intermediate → toToken
+              const reserve2In = parseFloat(pool2.reserveA);
+              const reserve2Out = parseFloat(pool2.reserveB);
+              estimatedOut = (intermediateAmount * reserve2Out) / (reserve2In + intermediateAmount);
+              
+              console.log('Multi-hop estimation via', intermediate, ':', {
+                amountIn: amountInFloat,
+                intermediateAmount,
+                estimatedOut,
+                route: `${fromToken.symbol} → ${intermediate} → ${toToken.symbol}`
+              });
+              
+              foundRoute = true;
+              break;
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+        
+        if (!foundRoute) {
+          // Fallback to simple price-based estimation
+          console.log('Could not find route, using fallback estimation');
+          estimatedOut = amountInFloat; // Assume 1:1 as last resort
+        }
       }
       
-      // Use the largest pool for estimation (most accurate pricing)
-      const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
-      const reserveIn = parseFloat(largestPool.reserveA);
-      const reserveOut = parseFloat(largestPool.reserveB);
-      
-      // Simple constant product formula estimation: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
-      const amountInFloat = parseFloat(amountInHuman);
-      const estimatedOut = (amountInFloat * reserveOut) / (reserveIn + amountInFloat);
-      
-      console.log('Estimated output:', {
-        amountIn: amountInFloat,
-        reserveIn,
-        reserveOut,
-        estimatedOut
-      });
-      
       // Step 2: Get accurate quote using estimated output
-      // This gives us the exact amountIn needed for that output
+      // The backend will find the best route and return exact values
       const quote = await sammApi.getSwapQuote(
         fromToken.symbol,
         toToken.symbol,
