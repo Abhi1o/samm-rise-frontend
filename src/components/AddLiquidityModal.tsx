@@ -144,6 +144,10 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   // Handle success state - show toast, refresh balances, clear form, and auto-reset
   useEffect(() => {
     if (liquidityState === 'success') {
+      // Clear form immediately (always, not just once)
+      setAmount0("");
+      setAmount1("");
+
       // Show success toast only once
       if (!successToastShown.current) {
         successToastShown.current = true;
@@ -151,10 +155,6 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
           title: "Liquidity Added Successfully!",
           description: "Your liquidity has been added to the pool",
         });
-
-        // Clear form immediately
-        setAmount0("");
-        setAmount1("");
 
         // Refresh balances immediately
         console.log('Refreshing balances after successful liquidity addition...');
@@ -172,10 +172,17 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liquidityState, onClose, toast]);
 
-  // Reset state when modal closes
+  // Reset state when modal closes or opens
   useEffect(() => {
     if (!isOpen) {
       // Reset all state when modal is closed
+      setLiquidityState('idle');
+      successToastShown.current = false;
+      lastProcessedHash.current = undefined;
+      setAmount0("");
+      setAmount1("");
+    } else {
+      // Also reset when modal opens (fresh start)
       setLiquidityState('idle');
       successToastShown.current = false;
       lastProcessedHash.current = undefined;
