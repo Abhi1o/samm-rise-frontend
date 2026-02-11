@@ -74,7 +74,11 @@ export function useAddLiquidity() {
     }
   };
 
-  // Handle transaction errors
+  // Handle transaction state changes
+  if (isSuccess && isLoading) {
+    setIsLoading(false);
+  }
+
   if (writeError && isLoading) {
     setIsLoading(false);
   }
