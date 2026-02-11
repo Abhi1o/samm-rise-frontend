@@ -41,11 +41,12 @@ const Header = () => {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-orange-light flex items-center justify-center orange-glow-subtle">
-                <span className="font-bold text-primary-foreground text-lg">Ω</span>
+              <div className="relative w-10 h-10 rounded-xl  flex items-center justify-center orange-glow-subtle">
+                <img className="w-8 h-8 text-white" src="/assets/image/saam_logo.png" alt="SAMM Logo" />
               </div>
               <span className="font-bold text-xl tracking-tight">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-orange-light">SAMM</span>
+                <span className="font-bold text-xl tracking-tight">SAAM </span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-orange-light">DEX</span>
               </span>
             </Link>
 
@@ -75,16 +76,20 @@ const Header = () => {
                 <button
                   onClick={() => setNetworkDropdownOpen(!networkDropdownOpen)}
                   disabled={isLoading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors disabled:opacity-50"
                 >
                   {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                    <div className={`w-5 h-5 rounded-full ${networkColor} flex items-center justify-center text-xs`}>
-                      {networkIcon}
-                    </div>
+                    networkIcon.startsWith('data:') || networkIcon.startsWith('/') ? (
+                      <img src={networkIcon} alt={networkName} className="w-3 h-4 object-cover" />
+                    ) : (
+                      <div className={`w-5 h-5 rounded-full ${networkColor} flex items-center justify-center text-xs`}>
+                        {networkIcon}
+                      </div>
+                    )
                   )}
-                  <span className="text-sm font-medium">{networkName}</span>
+                  <span className="text-sm font-medium">Rise</span>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
                 {networkDropdownOpen && !isLoading && (
@@ -105,9 +110,13 @@ const Header = () => {
                               isSelected ? 'bg-secondary/30' : ''
                             }`}
                           >
-                            <div className={`w-6 h-6 rounded-full ${meta?.color || 'bg-gray-500'} flex items-center justify-center text-sm`}>
-                              {meta?.icon || '🌐'}
-                            </div>
+                            {meta?.icon?.startsWith('data:') || meta?.icon?.startsWith('/') ? (
+                              <img src={meta.icon} alt={network.displayName} className="w-5 h-6 object-cover" />
+                            ) : (
+                              <div className={`w-6 h-6 rounded-full ${meta?.color || 'bg-gray-500'} flex items-center justify-center text-sm`}>
+                                {meta?.icon || '🌐'}
+                              </div>
+                            )}
                             <div className="flex-1">
                               <div className="font-medium">{network.displayName}</div>
                               <div className="text-xs text-muted-foreground">

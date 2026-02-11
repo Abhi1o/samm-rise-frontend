@@ -36,7 +36,7 @@ export const chainMetadata: Record<number, ChainMetadata> = {
   [riseChain.id]: {
     id: riseChain.id,
     name: 'RiseChain',
-    icon: '🚀',
+    icon: '/assets/image/riselogo.png',
     color: 'bg-orange-500',
     rpcUrl: riseChain.rpcUrls.default.http[0],
     blockExplorer: 'https://explorer.testnet.riselabs.xyz',

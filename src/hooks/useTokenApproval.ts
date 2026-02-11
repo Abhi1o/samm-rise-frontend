@@ -69,7 +69,7 @@ export function useTokenApproval({
     hash: approvalHash,
   });
 
-  const currentAllowance = allowance || 0n;
+  const currentAllowance = (allowance as bigint) || 0n;
   const needsApproval = currentAllowance < amountNeeded;
   const isApproving = isApprovePending || isApprovalConfirming;
 
@@ -83,7 +83,7 @@ export function useTokenApproval({
       setApprovalState('approved');
     } else if (approveError || approvalReceiptError) {
       setApprovalState('error');
-    } else if (!needsApproval && currentAllowance > 0n) {
+    } else if (!needsApproval && (currentAllowance as bigint) > 0n) {
       setApprovalState('approved');
     } else {
       setApprovalState('idle');
@@ -140,6 +140,7 @@ export function useTokenApproval({
     const approvalAmount = amount || MAX_UINT256;
 
     try {
+      // @ts-ignore - wagmi v2 writeContract signature compatibility
       approve({
         address: tokenAddress,
         abi: ERC20_ABI,

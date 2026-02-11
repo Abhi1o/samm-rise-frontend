@@ -120,6 +120,43 @@ export const TOKEN_FAUCET_ABI = [
 ] as const;
 
 export const SAMM_POOL_ABI = [
+  // ERC20 LP Token functions
+  {
+    inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ internalType: 'string', name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ internalType: 'string', name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ internalType: 'uint8', name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // SAMM Pool functions
   {
     inputs: [],
     name: 'getReserves',
@@ -167,6 +204,21 @@ export const SAMM_POOL_ABI = [
       { internalType: 'uint256', name: 'amountA', type: 'uint256' },
       { internalType: 'uint256', name: 'amountB', type: 'uint256' },
       { internalType: 'uint256', name: 'liquidity', type: 'uint256' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'liquidity', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountAMin', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountBMin', type: 'uint256' },
+      { internalType: 'address', name: 'to', type: 'address' },
+    ],
+    name: 'removeLiquidity',
+    outputs: [
+      { internalType: 'uint256', name: 'amountA', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountB', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
     type: 'function',

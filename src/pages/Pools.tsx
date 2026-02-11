@@ -6,24 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import AddLiquidityModal from "@/components/AddLiquidityModal";
+import RemoveLiquidityModal from "@/components/RemoveLiquidityModal";
 import CreatePoolModal from "@/components/CreatePoolModal";
 import { usePoolData } from "@/hooks/usePoolData";
+import { useUserPositions, UserPosition } from "@/hooks/useUserPositions";
 import { useNetwork } from "@/contexts/NetworkContext";
+import { useAccount } from "wagmi";
 import TokenLogo from "@/components/TokenLogo";
 import { getTokensForChain } from "@/config/tokens";
-
-const POOLS_DATA = [
-  { id: 1, token0: "ETH", token1: "USDC", network: "Ethereum", feeTier: "0.05%", apr: "42.87%", tvl: "$2,326,158", volume24h: "$68,924,061", type: "V3" },
-  { id: 2, token0: "ETH", token1: "USDT", network: "Ethereum", feeTier: "0.05%", apr: "38.72%", tvl: "$1,486,523", volume24h: "$9,493,016", type: "V3" },
-  { id: 3, token0: "WBTC", token1: "ETH", network: "Ethereum", feeTier: "0.3%", apr: "25.90%", tvl: "$696,436", volume24h: "$13,169,199", type: "V3" },
-  { id: 4, token0: "DAI", token1: "USDC", network: "Ethereum", feeTier: "0.01%", apr: "3.25%", tvl: "$386,937", volume24h: "$164,885", type: "Stable" },
-  { id: 5, token0: "ARB", token1: "ETH", network: "Arbitrum", feeTier: "0.3%", apr: "54.11%", tvl: "$213,158", volume24h: "$1,032,048", type: "V3" },
-  { id: 6, token0: "OP", token1: "ETH", network: "Optimism", feeTier: "0.3%", apr: "85.43%", tvl: "$195,456", volume24h: "$1,015,301", type: "V3" },
-  { id: 7, token0: "MATIC", token1: "USDC", network: "Polygon", feeTier: "0.3%", apr: "130.77%", tvl: "$163,081", volume24h: "$1,392,574", type: "V3" },
-  { id: 8, token0: "LINK", token1: "ETH", network: "Ethereum", feeTier: "0.3%", apr: "18.45%", tvl: "$142,892", volume24h: "$892,341", type: "V3" },
-];
-
-const NETWORKS = ["All Networks", "Ethereum", "Arbitrum", "Optimism", "Polygon", "Base"];
+import { formatUnits } from "viem";
 
 const TOKEN_ICONS: Record<string, string> = {
   ETH: "⟠",
@@ -44,13 +35,19 @@ const Pools = () => {
   const [selectedNetwork, setSelectedNetwork] = useState("All Networks");
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
   const [addLiquidityOpen, setAddLiquidityOpen] = useState(false);
+  const [removeLiquidityOpen, setRemoveLiquidityOpen] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<UserPosition | null>(null);
   const [createPoolOpen, setCreatePoolOpen] = useState(false);
 
   // Get current network from context
   const { selectedNetwork: currentNetwork } = useNetwork();
+  const { address: userAddress } = useAccount();
 
   // Fetch real pool data from backend for current network
   const { pools, totalShards, chainName, isLoading, error, refetch } = usePoolData();
+
+  // Fetch user positions
+  const { positions: userPositions, isLoading: positionsLoading, hasPositions, refetch: refetchPositions } = useUserPositions();
 
   // Get tokens for current network to fetch logoURIs
   const networkTokens = currentNetwork ? getTokensForChain(currentNetwork.chainId) : [];
@@ -137,32 +134,6 @@ const Pools = () => {
               </div>
             </div>
 
-            {/* Featured Pool Card */}
-            <div className="glass-card p-6 rounded-2xl border border-glass-border mb-8 max-w-md animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-muted-foreground">TOP POOL 🔥</span>
-                <div className="flex -space-x-2">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-lg border-2 border-background">⟠</div>
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-lg border-2 border-background">💲</div>
-                </div>
-              </div>
-              <h3 className="text-xl font-bold text-primary mb-4">ETH / USDC</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">FEE TIER</p>
-                  <p className="font-semibold">0.05%</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">APR</p>
-                  <p className="font-semibold text-primary">42.87%</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">TVL</p>
-                  <p className="font-semibold">$2.3M</p>
-                </div>
-              </div>
-            </div>
-
             {/* Tabs and Actions */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div className="flex gap-2">
@@ -186,53 +157,6 @@ const Pools = () => {
                 >
                   My Positions
                 </button>
-              </div>
-              <div className="flex gap-3">
-                <Button variant="outline" className="rounded-xl" onClick={() => setCreatePoolOpen(true)}>
-                  Create Pool
-                </Button>
-                <Button variant="swap" size="lg" className="rounded-xl" onClick={() => setAddLiquidityOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Liquidity
-                </Button>
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className="glass-card p-4 rounded-2xl border border-glass-border mb-6">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Network Selector */}
-                <div className="relative">
-                  <button
-                    onClick={() => setNetworkDropdownOpen(!networkDropdownOpen)}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors min-w-[180px]"
-                  >
-                    <div className="flex -space-x-1">
-                      <div className="w-5 h-5 rounded-full bg-blue-500" />
-                      <div className="w-5 h-5 rounded-full bg-red-500" />
-                      <div className="w-5 h-5 rounded-full bg-purple-500" />
-                    </div>
-                    <span className="flex-1 text-left">{selectedNetwork}</span>
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                  {networkDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-full bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                      {NETWORKS.map((network) => (
-                        <button
-                          key={network}
-                          onClick={() => {
-                            setSelectedNetwork(network);
-                            setNetworkDropdownOpen(false);
-                          }}
-                          className="w-full px-4 py-2.5 text-left hover:bg-secondary/50 transition-colors"
-                        >
-                          {network}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* Search */}
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -243,27 +167,22 @@ const Pools = () => {
                     className="pl-10 bg-secondary/50 border-border rounded-xl"
                   />
                 </div>
-
-                {/* Pool Type Filters */}
-                <div className="flex gap-2">
-                  {["All", "V3", "V2", "Stable"].map((type) => (
-                    <button
-                      key={type}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                        type === "All"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary/30 text-muted-foreground hover:bg-secondary/50"
-                      }`}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" size="lg"className="rounded-xl" onClick={() => setCreatePoolOpen(true)}>
+                  Create Pool
+                </Button>
+                <Button variant="swap" size="lg" className="rounded-xl" onClick={() => setAddLiquidityOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Liquidity
+                </Button>
               </div>
             </div>
 
+            
+
             {/* Pools Table */}
-            <div className="glass-card rounded-2xl border border-glass-border overflow-hidden">
+            <div className="glass-card rounded-2xl border border-glass-border overflow-hidden ">
               {/* Table Header */}
               <div className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
                 <div className="col-span-3">ALL POOLS</div>
@@ -357,29 +276,148 @@ const Pools = () => {
                 </>
               ) : (
                 <div>
-                  {/* Position Status Tabs */}
-                  <div className="flex items-center gap-6 px-6 py-4 border-b border-border">
-                    {(["all", "active", "inactive", "closed"] as const).map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setPositionStatus(status)}
-                        className={`text-sm font-medium transition-colors capitalize ${
-                          positionStatus === status
-                            ? "text-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
-                      </button>
-                    ))}
+                  {/* Position Status Tabs with Refresh Button */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                    <div className="flex items-center gap-6">
+                      {(["all", "active", "inactive", "closed"] as const).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => setPositionStatus(status)}
+                          className={`text-sm font-medium transition-colors capitalize ${
+                            positionStatus === status
+                              ? "text-primary"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refetchPositions()}
+                      disabled={positionsLoading}
+                      className="rounded-lg"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${positionsLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
                   </div>
                   
-                  {/* Empty State */}
-                  <div className="px-6 py-16 text-center">
-                    <p className="text-muted-foreground mb-4">No positions found</p>
-                    <p className="text-sm text-muted-foreground mb-6">Connect your wallet to view your liquidity positions</p>
-                    <Button variant="swap" onClick={() => setAddLiquidityOpen(true)}>Add Liquidity</Button>
-                  </div>
+                  {/* Loading State */}
+                  {positionsLoading && (
+                    <div className="flex items-center justify-center py-16">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <span className="ml-2 text-muted-foreground">Loading positions...</span>
+                    </div>
+                  )}
+
+                  {/* Not Connected State */}
+                  {!userAddress && !positionsLoading && (
+                    <div className="px-6 py-16 text-center">
+                      <p className="text-muted-foreground mb-4">Wallet not connected</p>
+                      <p className="text-sm text-muted-foreground mb-6">Connect your wallet to view your liquidity positions</p>
+                    </div>
+                  )}
+
+                  {/* Empty State - No Positions */}
+                  {userAddress && !positionsLoading && !hasPositions && (
+                    <div className="px-6 py-16 text-center">
+                      <p className="text-muted-foreground mb-4">No positions found</p>
+                      <p className="text-sm text-muted-foreground mb-6">Add liquidity to a pool to start earning fees</p>
+                      <Button variant="swap" onClick={() => setAddLiquidityOpen(true)}>Add Liquidity</Button>
+                    </div>
+                  )}
+
+                  {/* User Positions List */}
+                  {userAddress && !positionsLoading && hasPositions && (
+                    <div>
+                      <div className="px-6 py-3 bg-secondary/20 text-sm text-muted-foreground">
+                        Showing {userPositions.length} position{userPositions.length !== 1 ? 's' : ''}
+                      </div>
+                      {userPositions.map((position, index) => {
+                        const token0 = networkTokens.find(t => t.symbol === position.token0Symbol);
+                        const token1 = networkTokens.find(t => t.symbol === position.token1Symbol);
+
+                        // Format token amounts
+                        const token0AmountFormatted = token0 
+                          ? parseFloat(formatUnits(BigInt(position.token0Amount), token0.decimals)).toFixed(4)
+                          : '0';
+                        const token1AmountFormatted = token1
+                          ? parseFloat(formatUnits(BigInt(position.token1Amount), token1.decimals)).toFixed(4)
+                          : '0';
+
+                        return (
+                          <div
+                            key={position.poolAddress}
+                            className="px-6 py-6 border-b border-border/50 hover:bg-secondary/20 transition-colors animate-fade-in"
+                            style={{ animationDelay: `${index * 0.05}s` }}
+                          >
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="flex -space-x-2">
+                                  <TokenLogo
+                                    symbol={position.token0Symbol}
+                                    logoURI={token0?.logoURI}
+                                    icon={token0?.icon || getTokenIcon(position.token0Symbol)}
+                                    size="md"
+                                    className="border-2 border-background"
+                                  />
+                                  <TokenLogo
+                                    symbol={position.token1Symbol}
+                                    logoURI={token1?.logoURI}
+                                    icon={token1?.icon || getTokenIcon(position.token1Symbol)}
+                                    size="md"
+                                    className="border-2 border-background"
+                                  />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-lg">{position.pairName}</p>
+                                  <p className="text-xs text-muted-foreground">{position.poolName}</p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="rounded-lg"
+                                  onClick={() => {
+                                    setSelectedPosition(position);
+                                    setRemoveLiquidityOpen(true);
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                                <Button variant="swap" size="sm" className="rounded-lg" onClick={() => setAddLiquidityOpen(true)}>
+                                  Add More
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted-foreground mb-1">LP Tokens</p>
+                                <p className="font-semibold">{position.lpBalanceFormatted}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground mb-1">Share of Pool</p>
+                                <p className="font-semibold text-primary">{position.shareOfPool.toFixed(4)}%</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground mb-1">{position.token0Symbol} Amount</p>
+                                <p className="font-semibold">{token0AmountFormatted}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground mb-1">{position.token1Symbol} Amount</p>
+                                <p className="font-semibold">{token1AmountFormatted}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -388,6 +426,15 @@ const Pools = () => {
         <Footer />
 
         <AddLiquidityModal isOpen={addLiquidityOpen} onClose={() => setAddLiquidityOpen(false)} />
+        <RemoveLiquidityModal 
+          isOpen={removeLiquidityOpen} 
+          onClose={() => {
+            setRemoveLiquidityOpen(false);
+            setSelectedPosition(null);
+            refetchPositions();
+          }} 
+          position={selectedPosition}
+        />
         <CreatePoolModal isOpen={createPoolOpen} onClose={() => setCreatePoolOpen(false)} />
       </div>
     </>

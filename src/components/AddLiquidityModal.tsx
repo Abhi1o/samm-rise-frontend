@@ -109,7 +109,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   const poolInfo = useMemo(() => {
     if (!poolState || !selectedToken0 || !selectedToken1) return null;
 
-    const [pairToken0, pairToken1] = selectedPool?.pairName.split('-') || [];
+    const [pairToken0] = selectedPool?.pairName.split('-') || [];
     const isToken0First = pairToken0 === selectedToken0.symbol;
 
     const reserveA = poolState.reserveA;
@@ -212,7 +212,6 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
   const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading;
   const canAddLiquidity = selectedPool && amount0 && amount1 && userAddress && !isLoading;
-  const needsAnyApproval = needsApproval0 || needsApproval1;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
