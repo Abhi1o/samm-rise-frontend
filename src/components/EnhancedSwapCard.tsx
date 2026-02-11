@@ -544,18 +544,18 @@ const EnhancedSwapCard = () => {
               </div>
               
               {/* Show shard info for direct swaps */}
-              {quoteData.route === 'direct' && quoteData.shards && quoteData.shards.length > 0 && (
+              {quoteData.hops === 1 && quoteData.selectedShards && quoteData.selectedShards.length > 0 && (
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground">Shard</span>
-                  <span className="text-chrome font-mono text-xs">{quoteData.shards[0]}</span>
+                  <span className="text-chrome font-mono text-xs">{quoteData.selectedShards[0].slice(0, 10)}...</span>
                 </div>
               )}
               
               {/* Show hops for multi-hop swaps */}
-              {quoteData.route === 'multi-hop' && quoteData.steps && (
+              {quoteData.hops > 1 && quoteData.route && (
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Hops</span>
-                  <span className="text-chrome font-mono text-xs">{quoteData.steps.length}</span>
+                  <span className="text-muted-foreground">Route</span>
+                  <span className="text-chrome font-mono text-xs">{quoteData.route.join(' → ')}</span>
                 </div>
               )}
               
