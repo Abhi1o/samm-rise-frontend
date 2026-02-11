@@ -235,23 +235,48 @@ const EnhancedSwapCard = () => {
       }
       
       console.log('Fetching quote:', {
-        chain: selectedNetwork.name,
         chainId: selectedNetwork.chainId,
         amount: amountInSmallestUnit,
         fromToken: fromToken.symbol,
-        fromAddress: fromToken.address,
         toToken: toToken.symbol,
-        toAddress: toToken.address,
         fromDecimals: fromToken.decimals,
         toDecimals: toToken.decimals
       });
       
-      // Try to get quote from backend using network name
+      // Convert amountIn to human-readable format
+      const amountInHuman = (parseFloat(amountInSmallestUnit) / Math.pow(10, fromToken.decimals)).toString();
+      
+      // CRITICAL FIX: Backend uses "exact output" model, but UI is "exact input"
+      // Solution: Estimate the output amount first, then get accurate quote
+      
+      // Step 1: Get pool reserves to estimate output
+      const poolsResponse = await sammApi.getPoolsForPair(fromToken.symbol, toToken.symbol);
+      if (!poolsResponse.shards || poolsResponse.shards.length === 0) {
+        throw new Error('No pool found for this pair');
+      }
+      
+      // Use the largest pool for estimation (most accurate pricing)
+      const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
+      const reserveIn = parseFloat(largestPool.reserveA);
+      const reserveOut = parseFloat(largestPool.reserveB);
+      
+      // Simple constant product formula estimation: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+      const amountInFloat = parseFloat(amountInHuman);
+      const estimatedOut = (amountInFloat * reserveOut) / (reserveIn + amountInFloat);
+      
+      console.log('Estimated output:', {
+        amountIn: amountInFloat,
+        reserveIn,
+        reserveOut,
+        estimatedOut
+      });
+      
+      // Step 2: Get accurate quote using estimated output
+      // This gives us the exact amountIn needed for that output
       const quote = await sammApi.getSwapQuote(
-        selectedNetwork.name,
-        amountInSmallestUnit,
-        fromToken.address,
-        toToken.address
+        fromToken.symbol,
+        toToken.symbol,
+        estimatedOut.toFixed(6)  // Use estimated output as target
       );
 
       console.log('Quote received:', quote);
@@ -263,26 +288,22 @@ const EnhancedSwapCard = () => {
 
       setQuoteData(quote);
 
-      // Both direct and multi-hop now use the same format with 'route' field
-      if (quote.route === 'direct' || quote.route === 'multi-hop') {
-        if (!quote.amountOut) {
-          throw new Error('Quote missing amountOut field');
-        }
-
-        const outputAmount = parseFloat(quote.amountOut) / Math.pow(10, toToken.decimals);
+      // The quote tells us: to get X output, you need Y input
+      // We want: for Y input, you get X output
+      // Since we used our estimated output, the quote's expectedAmountIn should be close to our input
+      if (quote.expectedAmountIn && quote.amountOut) {
+        const outputAmount = parseFloat(quote.amountOut);
         setToValue(outputAmount.toFixed(6));
         
-        if (quote.route === 'direct') {
-          setRouteInfo(`Direct swap via ${quote.shards?.[0] || 'Unknown'}`);
+        if (quote.hops === 1) {
+          setRouteInfo(`Direct swap via ${quote.selectedShards?.[0]?.slice(0, 10) || 'pool'}...`);
         } else {
-          setRouteInfo(`Multi-hop: ${quote.path?.join(' → ') || 'Unknown route'}`);
+          setRouteInfo(`Multi-hop: ${quote.route?.join(' → ') || 'Unknown route'}`);
         }
         
-        console.log(`${quote.route} swap:`, outputAmount, toToken.symbol);
+        console.log(`${quote.hops === 1 ? 'Direct' : 'Multi-hop'} swap:`, outputAmount, toToken.symbol);
       } else {
-        // Fallback for unexpected format
-        console.error('Unexpected quote format:', quote);
-        throw new Error(`Invalid quote format: route=${quote.route}`);
+        throw new Error('Quote missing expectedAmountIn or amountOut field');
       }
     } catch (error: any) {
       console.error('Failed to fetch quote:', error);

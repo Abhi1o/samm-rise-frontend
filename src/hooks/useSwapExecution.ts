@@ -73,7 +73,7 @@ export function useSwapExecution(): UseSwapExecutionReturn {
    */
   const buildSwapPath = useCallback(
     (params: SwapParams) => {
-      const { fromToken, toToken, quoteData, slippageBps, deadline, recipient } = params;
+      const { fromToken, toToken, fromDecimals, quoteData, slippageBps, deadline, recipient } = params;
 
       const hops: {
         tokenIn: Address;
@@ -109,7 +109,12 @@ export function useSwapExecution(): UseSwapExecutionReturn {
       // 3. Due to SAMM curve non-linearity, these calculations don't match exactly
       // 4. The contract may need MORE input than the backend's estimate to guarantee the output
       const slippage = slippageBps || DEFAULT_SLIPPAGE * 100; // Convert to bps
-      const baseAmountIn = BigInt(quoteData.amountIn);
+      
+      // Convert amountIn from decimal string to BigInt wei
+      // quoteData.amountIn is a formatted decimal like "11.255641"
+      // We need to convert it to wei using the fromToken decimals
+      const amountInDecimal = parseFloat(quoteData.amountIn);
+      const baseAmountIn = BigInt(Math.floor(amountInDecimal * Math.pow(10, fromDecimals)));
       
       // Use 5% extra slippage to handle the forward/reverse calculation mismatch
       // This ensures the contract has enough input allowance to achieve the desired output

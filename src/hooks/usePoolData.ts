@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { sammApi, ShardInfo, PoolStats } from '@/services/sammApi';
+import { sammApi, ShardInfo } from '@/services/sammApi';
 import { useChainId } from 'wagmi';
 import { getChainName } from '@/config/chains';
 
@@ -13,13 +13,14 @@ interface Pool extends ShardInfo {
  */
 export function usePoolData() {
   const chainId = useChainId();
-  const chainName = getChainName(chainId).toLowerCase().replace(' ', '');
+  const chainName = getChainName(chainId);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pools', chainName, chainId],
+    queryKey: ['pools', chainId],
     queryFn: async () => {
       try {
-        return await sammApi.getShards(chainName);
+        // Use the new getPools() endpoint
+        return await sammApi.getPools();
       } catch (err) {
         console.error('Failed to fetch pools:', err);
         throw err;
@@ -31,22 +32,22 @@ export function usePoolData() {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
-  // Transform shards to pool format
-  const pools: Pool[] = data
-    ? Object.entries(data.shards).flatMap(([pairName, shards]) =>
-        shards.map((shard) => ({
+  // Transform pools data to flat array format
+  const pools: Pool[] = data?.pools
+    ? data.pools.flatMap((poolGroup) =>
+        poolGroup.shards.map((shard) => ({
           ...shard,
           id: shard.address,
-          pairName,
+          pairName: poolGroup.pair,
         }))
       )
     : [];
 
   return {
     pools,
-    totalShards: data?.totalShards || 0,
-    chainId: data?.chainId || chainId,
-    chainName: data?.chain || chainName,
+    totalShards: pools.length,
+    chainId,
+    chainName,
     isLoading,
     error,
     refetch,
@@ -55,53 +56,63 @@ export function usePoolData() {
 
 /**
  * Hook to fetch statistics for a specific pool
+ * Note: This endpoint is not available in the current backend
+ * Use the pools data from usePoolData instead
  */
 export function usePoolStats(poolAddress: string) {
   const chainId = useChainId();
-  const chainName = getChainName(chainId).toLowerCase().replace(' ', '');
+  const chainName = getChainName(chainId);
 
   return useQuery({
-    queryKey: ['poolStats', chainName, poolAddress],
-    queryFn: () => sammApi.getPoolStats(chainName, poolAddress),
-    enabled: !!poolAddress,
-    refetchInterval: 60000, // Refresh every minute
+    queryKey: ['poolStats', poolAddress],
+    queryFn: async () => {
+      // This endpoint doesn't exist in the new backend
+      // Return mock data or fetch from pools endpoint
+      throw new Error('Pool stats endpoint not available');
+    },
+    enabled: false, // Disabled until backend implements this
+    refetchInterval: 60000,
     staleTime: 60000,
-    retry: 2,
+    retry: 0,
   });
 }
 
 /**
  * Hook to fetch detailed pool data with statistics
+ * Uses the same getPools() endpoint as usePoolData
  */
 export function useDetailedPoolData() {
   const chainId = useChainId();
-  const chainName = getChainName(chainId).toLowerCase().replace(' ', '');
+  const chainName = getChainName(chainId);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['detailedPools', chainName, chainId],
-    queryFn: () => sammApi.getDetailedShards(chainName),
+    queryKey: ['detailedPools', chainId],
+    queryFn: async () => {
+      // Use the same getPools() endpoint
+      return await sammApi.getPools();
+    },
     refetchInterval: 30000,
     staleTime: 30000,
     retry: 2,
   });
 
-  // Transform detailed shards to pool format
-  const pools = data
-    ? Object.entries(data.shards).flatMap(([pairName, shards]) =>
-        shards.map((shard) => ({
+  // Transform pools data to flat array format
+  const pools = data?.pools
+    ? data.pools.flatMap((poolGroup) =>
+        poolGroup.shards.map((shard) => ({
           ...shard,
           id: shard.address,
-          pairName,
+          pairName: poolGroup.pair,
         }))
       )
     : [];
 
   return {
     pools,
-    totalShards: data?.totalShards || 0,
-    totalTVL: data?.totalTVL || '0',
-    chainId: data?.chainId || chainId,
-    chainName: data?.chain || chainName,
+    totalShards: pools.length,
+    totalTVL: '0', // Calculate from pools if needed
+    chainId,
+    chainName,
     isLoading,
     error,
     refetch,

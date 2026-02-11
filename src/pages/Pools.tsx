@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Search, Plus, ChevronDown, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Search, Plus, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
@@ -32,8 +32,6 @@ const Pools = () => {
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
   const [positionStatus, setPositionStatus] = useState<"all" | "active" | "inactive" | "closed">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedNetwork, setSelectedNetwork] = useState("All Networks");
-  const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
   const [addLiquidityOpen, setAddLiquidityOpen] = useState(false);
   const [removeLiquidityOpen, setRemoveLiquidityOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<UserPosition | null>(null);
@@ -44,7 +42,7 @@ const Pools = () => {
   const { address: userAddress } = useAccount();
 
   // Fetch real pool data from backend for current network
-  const { pools, totalShards, chainName, isLoading, error, refetch } = usePoolData();
+  const { pools, chainName, isLoading, error, refetch } = usePoolData();
 
   // Fetch user positions
   const { positions: userPositions, isLoading: positionsLoading, hasPositions, refetch: refetchPositions } = useUserPositions();
@@ -74,7 +72,7 @@ const Pools = () => {
   // Transform pools to display format
   const displayPools = pools.map((pool, index) => {
     const [token0Symbol, token1Symbol] = pool.pairName.split('-');
-    const tvl = pool.liquidity ? `$${Number(pool.liquidity).toLocaleString()}` : '$0';
+    const tvl = pool.liquidityUSD ? `$${Number(pool.liquidityUSD).toLocaleString()}` : '$0';
 
     return {
       id: index + 1,
@@ -98,9 +96,7 @@ const Pools = () => {
     const matchesSearch =
       pool.token0.toLowerCase().includes(searchQuery.toLowerCase()) ||
       pool.token1.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesNetwork =
-      selectedNetwork === "All Networks" || pool.network === selectedNetwork;
-    return matchesSearch && matchesNetwork;
+    return matchesSearch;
   });
 
   return (

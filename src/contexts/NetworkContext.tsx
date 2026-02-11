@@ -1,8 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useChainId, useSwitchChain } from 'wagmi';
-import { sammApi, ChainInfo } from '@/services/sammApi';
 import { useToast } from '@/hooks/use-toast';
 import { riseChain } from '@/config/chains';
+
+interface ChainInfo {
+  chainId: number;
+  name: string;
+  displayName: string;
+}
 
 interface NetworkContextType {
   selectedNetwork: ChainInfo | null;
@@ -50,9 +55,15 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
         }
       }
 
-      // Fetch from backend
-      const response = await sammApi.getChains();
-      const networks = response.chains;
+      // SAMM is single-chain (RiseChain only)
+      // No need to fetch from backend
+      const networks: ChainInfo[] = [
+        {
+          chainId: riseChain.id,
+          name: 'risechain',
+          displayName: 'RiseChain Testnet',
+        },
+      ];
 
       // Cache the result
       localStorage.setItem(
@@ -69,27 +80,9 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
       
       // Fallback to RiseChain only
       const fallbackNetwork: ChainInfo = {
-        name: 'risechain',
         chainId: riseChain.id,
+        name: 'risechain',
         displayName: 'RiseChain Testnet',
-        nativeToken: {
-          symbol: 'ETH',
-          decimals: 18,
-        },
-        status: {
-          status: 'unknown',
-          chainId: riseChain.id,
-          blockNumber: 0,
-          lastChecked: new Date().toISOString(),
-          totalShards: 0,
-        },
-        endpoints: {
-          info: '/api/risechain/info',
-          shards: '/api/risechain/shards',
-          swap: '/api/risechain/swap',
-          bestShard: '/api/risechain/swap/best-shard',
-          crossPool: '/api/risechain/swap/cross-pool',
-        },
       };
       
       setAvailableNetworks([fallbackNetwork]);

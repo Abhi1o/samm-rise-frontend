@@ -4,12 +4,13 @@ import { riseChain } from './chains';
 /**
  * Contract addresses by chain ID
  * These addresses are deployed on RiseChain Testnet
+ * Updated: 2026-02-10
  */
 export const CONTRACT_ADDRESSES = {
   [riseChain.id]: {
-    crossPoolRouter: '0x68A1b2C247b5E73d161fDb5A43299ff7672A8d62' as Address,
-    factory: '0xB312FC3A8769082e285a340c18aD2a3f88A54327' as Address,
-    tokenFaucet: '0x983A8fe1408bBba8a1EF02641E5ECD05b9a4BA1c' as Address,
+    crossPoolRouter: '0x622c2D2719197A047f29BCBaaaEBBDbD54b45a11' as Address,
+    factory: '0x1114cF606d700bB8490C9D399500e35a31FaE27A' as Address,
+    tokenFaucet: '0x983A8fe1408bBba8a1EF02641E5ECD05b9a4BA1c' as Address, // Keeping old faucet address
   },
 } as const;
 

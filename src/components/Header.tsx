@@ -1,26 +1,17 @@
-import { Wallet, Menu, X, ChevronDown, Loader2, Droplets } from "lucide-react";
+import { Wallet, Menu, X, ChevronDown, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useChainId } from "wagmi";
 import { formatAddress } from "@/utils/formatters";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { chainMetadata } from "@/config/chains";
-import { TokenFaucetModal } from "./TokenFaucetModal";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
-  const [faucetOpen, setFaucetOpen] = useState(false);
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
   const { selectedNetwork, availableNetworks, isLoading, switchNetwork } = useNetwork();
-
-  // Testnet chains where faucet is available
-  const TESTNET_CHAINS = [11155931, 11155111]; // RiseChain Testnet, Sepolia
-  const isTestnet = chainId ? TESTNET_CHAINS.includes(chainId) : false;
 
   // Get current network metadata
   const currentNetworkMeta = selectedNetwork ? chainMetadata[selectedNetwork.chainId] : null;
@@ -119,9 +110,6 @@ const Header = () => {
                             )}
                             <div className="flex-1">
                               <div className="font-medium">{network.displayName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {network.status.totalShards} pools
-                              </div>
                             </div>
                             {isSelected && (
                               <div className="w-2 h-2 rounded-full bg-primary" />
@@ -153,7 +141,6 @@ const Header = () => {
                   account,
                   chain,
                   openAccountModal,
-                  openChainModal,
                   openConnectModal,
                   mounted,
                 }) => {

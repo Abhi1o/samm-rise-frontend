@@ -65,9 +65,14 @@ export function useTokenBalance(token?: Token) {
   const isLoading = isNative ? nativeLoading : erc20Loading;
 
   if (isNative && nativeBalance) {
+    // Format to max 6 decimal places for display
+    const formatted = parseFloat(nativeBalance.formatted).toFixed(6);
+    // Remove trailing zeros
+    const cleanFormatted = parseFloat(formatted).toString();
+    
     return {
       balance: nativeBalance.value.toString(),
-      balanceFormatted: nativeBalance.formatted,
+      balanceFormatted: cleanFormatted,
       balanceBigInt: nativeBalance.value,
       isLoading,
       refetch,
@@ -75,10 +80,15 @@ export function useTokenBalance(token?: Token) {
   }
 
   if (!isNative && erc20Balance !== undefined) {
-    const formatted = formatUnits(erc20Balance as bigint, token.decimals);
+    const rawFormatted = formatUnits(erc20Balance as bigint, token.decimals);
+    // Format to max 6 decimal places for display
+    const formatted = parseFloat(rawFormatted).toFixed(6);
+    // Remove trailing zeros
+    const cleanFormatted = parseFloat(formatted).toString();
+    
     return {
       balance: (erc20Balance as bigint).toString(),
-      balanceFormatted: formatted,
+      balanceFormatted: cleanFormatted,
       balanceBigInt: erc20Balance as bigint,
       isLoading,
       refetch,
