@@ -74,15 +74,7 @@ export function useAddLiquidity() {
     }
   };
 
-  // Handle transaction confirmation
-  if (isSuccess && isLoading) {
-    setIsLoading(false);
-    toast({
-      title: 'Liquidity Added!',
-      description: 'Your liquidity has been successfully added to the pool',
-    });
-  }
-
+  // Handle transaction errors
   if (writeError && isLoading) {
     setIsLoading(false);
   }

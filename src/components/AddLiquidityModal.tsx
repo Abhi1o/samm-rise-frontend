@@ -115,7 +115,10 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   });
 
   // Add liquidity hook
-  const { addLiquidity, isLoading: isAddingLiquidity, isSuccess: isAddSuccess } = useAddLiquidity();
+  const { addLiquidity, isLoading: isAddingLiquidity, isSuccess: isAddSuccess, hash } = useAddLiquidity();
+
+  // Track the last processed transaction hash to prevent duplicate toasts
+  const lastProcessedHash = useRef<string | undefined>(undefined);
 
   // Update liquidity state based on approval and transaction states
   useEffect(() => {
@@ -129,24 +132,24 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
       } else if (liquidityState !== 'confirming') {
         setLiquidityState('adding');
       }
-    } else if (isAddSuccess) {
+    } else if (isAddSuccess && hash && hash !== lastProcessedHash.current) {
+      // Only set success if we haven't processed this transaction yet
+      lastProcessedHash.current = hash;
       setLiquidityState('success');
     } else if (liquidityState !== 'success' && liquidityState !== 'error') {
       setLiquidityState('idle');
     }
-  }, [isApproving0, isApproving1, isAddingLiquidity, isAddSuccess, liquidityState]);
+  }, [isApproving0, isApproving1, isAddingLiquidity, isAddSuccess, liquidityState, hash]);
 
   // Handle success state - auto-close modal and refresh balances
   useEffect(() => {
-    if (liquidityState === 'success') {
+    if (liquidityState === 'success' && !successToastShown.current) {
       // Show success toast only once
-      if (!successToastShown.current) {
-        successToastShown.current = true;
-        toast({
-          title: "Liquidity Added Successfully!",
-          description: "Your liquidity has been added to the pool",
-        });
-      }
+      successToastShown.current = true;
+      toast({
+        title: "Liquidity Added Successfully!",
+        description: "Your liquidity has been added to the pool",
+      });
 
       // Refresh balances
       refetchBalance0();
@@ -163,6 +166,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
         setTimeout(() => {
           setLiquidityState('idle');
           successToastShown.current = false;
+          lastProcessedHash.current = undefined;
         }, 300);
       }, 2000);
 
@@ -176,6 +180,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     if (!isOpen) {
       setLiquidityState('idle');
       successToastShown.current = false;
+      lastProcessedHash.current = undefined;
     }
   }, [isOpen]);
 
