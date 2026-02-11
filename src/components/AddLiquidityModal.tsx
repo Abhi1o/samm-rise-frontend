@@ -143,31 +143,27 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
   // Handle success state - auto-close modal and refresh balances
   useEffect(() => {
-    if (liquidityState === 'success' && !successToastShown.current) {
+    if (liquidityState === 'success') {
       // Show success toast only once
-      successToastShown.current = true;
-      toast({
-        title: "Liquidity Added Successfully!",
-        description: "Your liquidity has been added to the pool",
-      });
+      if (!successToastShown.current) {
+        successToastShown.current = true;
+        toast({
+          title: "Liquidity Added Successfully!",
+          description: "Your liquidity has been added to the pool",
+        });
 
-      // Refresh balances
-      refetchBalance0();
-      refetchBalance1();
+        // Refresh balances
+        refetchBalance0();
+        refetchBalance1();
 
-      // Clear form
-      setAmount0("");
-      setAmount1("");
+        // Clear form
+        setAmount0("");
+        setAmount1("");
+      }
 
-      // Close modal after 2 seconds
+      // Always set up the close timer when in success state
       const timer = setTimeout(() => {
         onClose();
-        // Reset state after modal closes
-        setTimeout(() => {
-          setLiquidityState('idle');
-          successToastShown.current = false;
-          lastProcessedHash.current = undefined;
-        }, 300);
       }, 2000);
 
       return () => clearTimeout(timer);
@@ -178,9 +174,12 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
+      // Reset all state when modal is closed
       setLiquidityState('idle');
       successToastShown.current = false;
       lastProcessedHash.current = undefined;
+      setAmount0("");
+      setAmount1("");
     }
   }, [isOpen]);
 
