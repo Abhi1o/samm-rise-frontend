@@ -168,7 +168,8 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
       return () => clearTimeout(timer);
     }
-  }, [liquidityState, onClose, refetchBalance0, refetchBalance1, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liquidityState, onClose, toast]);
 
   // Reset state when modal closes
   useEffect(() => {
