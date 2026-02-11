@@ -141,7 +141,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     }
   }, [isApproving0, isApproving1, isAddingLiquidity, isAddSuccess, liquidityState, hash]);
 
-  // Handle success state - auto-close modal and refresh balances
+  // Handle success state - show toast, refresh balances, clear form, and auto-reset
   useEffect(() => {
     if (liquidityState === 'success') {
       // Show success toast only once
@@ -152,19 +152,20 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
           description: "Your liquidity has been added to the pool",
         });
 
-        // Refresh balances
-        refetchBalance0();
-        refetchBalance1();
-
-        // Clear form
+        // Clear form immediately
         setAmount0("");
         setAmount1("");
+
+        // Refresh balances immediately
+        console.log('Refreshing balances after successful liquidity addition...');
+        refetchBalance0();
+        refetchBalance1();
       }
 
-      // Always set up the close timer when in success state
+      // Auto-close modal after 3 seconds (same as swap card)
       const timer = setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 3000);
 
       return () => clearTimeout(timer);
     }
