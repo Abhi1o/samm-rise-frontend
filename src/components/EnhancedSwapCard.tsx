@@ -369,8 +369,11 @@ const EnhancedSwapCard = () => {
     }
   };
 
-  const formatFee = (fee: string, decimals: number) => {
-    const feeAmount = parseFloat(fee) / Math.pow(10, decimals);
+  const formatFee = (fee: string) => {
+    // Backend returns fee as decimal string (e.g., "0.000044"), not wei
+    const feeAmount = parseFloat(fee);
+    if (feeAmount === 0) return '0.000000';
+    if (feeAmount < 0.000001) return '< 0.000001';
     return feeAmount.toFixed(6);
   };
 
@@ -561,7 +564,7 @@ const EnhancedSwapCard = () => {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Total Fee</span>
                   <span className="text-foreground font-mono text-xs">
-                    {formatFee(quoteData.totalFee, fromToken.decimals)} {fromToken.symbol}
+                    {formatFee(quoteData.totalFee)} {fromToken.symbol}
                   </span>
                 </div>
               )}

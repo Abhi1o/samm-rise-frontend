@@ -63,7 +63,7 @@ const TokenInput = ({
       
       {usdValue && (
         <div className="mt-2 text-sm text-muted-foreground">
-          ≈ ${usdValue}
+          ≈ {usdValue}
         </div>
       )}
     </div>
