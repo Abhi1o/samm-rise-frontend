@@ -178,14 +178,14 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
       // Reset all state when modal is closed
       setLiquidityState('idle');
       successToastShown.current = false;
-      lastProcessedHash.current = undefined;
+      // Don't reset lastProcessedHash - keep it to prevent re-triggering success
       setAmount0("");
       setAmount1("");
     } else {
       // Also reset when modal opens (fresh start)
       setLiquidityState('idle');
       successToastShown.current = false;
-      lastProcessedHash.current = undefined;
+      // Don't reset lastProcessedHash - keep it to prevent re-triggering success
       setAmount0("");
       setAmount1("");
     }
