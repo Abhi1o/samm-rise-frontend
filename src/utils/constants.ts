@@ -34,6 +34,12 @@ export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 // Native token placeholder address (used for ETH, MATIC, etc.)
 export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
+// Contract addresses on RiseChain Testnet
+// Updated 2026-02-12 - New faucet with correct token addresses
+export const TOKEN_FAUCET_ADDRESS = '0x1758716f8ccb77B514d801eF00C690F6F5CFce84';
+export const SAMM_FACTORY_ADDRESS = '0x1114cF606d700bB8490C9D399500e35a31FaE27A';
+export const CROSS_POOL_ROUTER_ADDRESS = '0x622c2D2719197A047f29BCBaaaEBBDbD54b45a11';
+
 // ERC20 ABI for basic operations
 export const ERC20_ABI = [
   {

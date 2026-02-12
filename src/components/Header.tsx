@@ -7,6 +7,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { formatAddress } from "@/utils/formatters";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { chainMetadata } from "@/config/chains";
+import FaucetButton from "./FaucetButton";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -122,19 +123,8 @@ const Header = () => {
                 )}
               </div>
 
-              {/* Faucet Button (only on testnet) */}
-              {/* TODO: Re-enable when faucet contract is configured */}
-              {/* {isTestnet && isConnected && (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => setFaucetOpen(true)}
-                  className="flex items-center gap-2"
-                >
-                  <Droplets className="w-4 h-4" />
-                  Faucet
-                </Button>
-              )} */}
+              {/* Faucet Button (only on RiseChain Testnet) */}
+              <FaucetButton />
 
               <ConnectButton.Custom>
                 {({
@@ -224,18 +214,9 @@ const Header = () => {
                     ))}
                   </select>
                 </div>
-                {/* Faucet Button (Mobile - only on testnet) */}
-                {/* TODO: Re-enable when faucet contract is configured */}
-                {/* {isTestnet && isConnected && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setFaucetOpen(true)}
-                    className="flex items-center gap-2"
-                  >
-                    <Droplets className="w-4 h-4" />
-                    Request Test Tokens
-                  </Button>
-                )} */}
+                {/* Faucet Button (Mobile - only on RiseChain Testnet) */}
+                <FaucetButton />
+
                 <ConnectButton.Custom>
                   {({
                     account,

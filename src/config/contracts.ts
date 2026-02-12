@@ -10,7 +10,7 @@ export const CONTRACT_ADDRESSES = {
   [riseChain.id]: {
     crossPoolRouter: '0x622c2D2719197A047f29BCBaaaEBBDbD54b45a11' as Address,
     factory: '0x1114cF606d700bB8490C9D399500e35a31FaE27A' as Address,
-    tokenFaucet: '0x983A8fe1408bBba8a1EF02641E5ECD05b9a4BA1c' as Address, // Keeping old faucet address
+    tokenFaucet: '0x1758716f8ccb77B514d801eF00C690F6F5CFce84' as Address, // Updated Feb 10, 2026
   },
 } as const;
 
