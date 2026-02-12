@@ -10,9 +10,13 @@ import { riseChain } from './chains';
 function getRpcUrl(chain: Chain): string {
   const alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY;
 
+  // For Rise Testnet, always use the public RPC as Alchemy support may be limited
+  if (chain.id === riseChain.id) {
+    return chain.rpcUrls.default.http[0];
+  }
+
   // Alchemy URLs for supported chains
   const alchemyUrls: Record<number, string> = {
-    [riseChain.id]: `https://rise-testnet.g.alchemy.com/v2/${alchemyKey}`,
     [mainnet.id]: `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [polygon.id]: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [arbitrum.id]: `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`,
