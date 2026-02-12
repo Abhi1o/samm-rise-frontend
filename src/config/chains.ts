@@ -1,6 +1,7 @@
 import { ChainMetadata } from '@/types/web3';
 import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
 import { defineChain } from 'viem';
+import type { Chain } from 'viem';
 
 /**
  * RiseChain Testnet
@@ -17,15 +18,12 @@ export const riseChain = defineChain({
     default: {
       http: ['https://testnet.riselabs.xyz'],
     },
-    public: {
-      http: ['https://testnet.riselabs.xyz'],
-    },
   },
   blockExplorers: {
     default: { name: 'Explorer', url: 'https://explorer.testnet.riselabs.xyz' },
   },
   testnet: true,
-});
+}) as Chain;
 
 /**
  * Extended chain metadata for UI display

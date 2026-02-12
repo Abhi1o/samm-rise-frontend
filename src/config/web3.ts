@@ -1,16 +1,18 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { http } from 'viem';
+import type { Chain } from 'viem';
 import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
 import { riseChain } from './chains';
 
 /**
  * Get RPC URL for a chain with Alchemy if available, fallback to public RPC
  */
-function getRpcUrl(chain: typeof mainnet | typeof riseChain): string {
+function getRpcUrl(chain: Chain): string {
   const alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY;
 
   // Alchemy URLs for supported chains
   const alchemyUrls: Record<number, string> = {
+    [riseChain.id]: `https://rise-testnet.g.alchemy.com/v2/${alchemyKey}`,
     [mainnet.id]: `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [polygon.id]: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [arbitrum.id]: `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`,

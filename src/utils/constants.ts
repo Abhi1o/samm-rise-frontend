@@ -17,6 +17,9 @@ export const SEARCH_DEBOUNCE_DELAY = 300;
 
 // API endpoints
 export const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
+export const COINCAP_API_URL = 'https://api.coincap.io/v2';
+export const CRYPTOCOMPARE_API_URL = 'https://min-api.cryptocompare.com/data';
+export const BINANCE_API_URL = 'https://api.binance.com/api/v3';
 
 // Price impact warning thresholds
 export const PRICE_IMPACT_WARNING = 3; // 3%
