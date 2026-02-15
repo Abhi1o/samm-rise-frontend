@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Address } from 'viem';
 import { ERC20_ABI, MAX_UINT256 } from '@/utils/constants';
@@ -19,6 +19,7 @@ interface UseTokenApprovalReturn {
   isApproving: boolean;
   allowance: bigint;
   approvalState: ApprovalState;
+  approvalHash: string | undefined;
   reset: () => void;
 }
 
@@ -35,6 +36,10 @@ export function useTokenApproval({
   const { toast } = useToast();
   const { address: userAddress } = useAccount();
   const [approvalState, setApprovalState] = useState<ApprovalState>('idle');
+  const pendingPromise = useRef<{
+    resolve: () => void;
+    reject: (error: any) => void;
+  } | null>(null);
 
   // Read current allowance
   const {
@@ -98,9 +103,15 @@ export function useTokenApproval({
     currentAllowance,
   ]);
 
-  // Show toast on approval success
+  // Show toast on approval success and resolve pending promise
   useEffect(() => {
     if (isApprovalSuccess) {
+      // Resolve pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.resolve();
+        pendingPromise.current = null;
+      }
+
       toast({
         title: 'Approval Successful',
         description: 'Token approved for trading',
@@ -109,8 +120,16 @@ export function useTokenApproval({
     }
   }, [isApprovalSuccess, toast, refetchAllowance]);
 
-  // Show toast on approval error
+  // Show toast on approval error and reject pending promise
   useEffect(() => {
+    if (approveError || approvalReceiptError) {
+      // Reject pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.reject(approveError || approvalReceiptError);
+        pendingPromise.current = null;
+      }
+    }
+
     if (approveError) {
       toast({
         title: 'Approval Failed',
@@ -130,8 +149,9 @@ export function useTokenApproval({
   /**
    * Approve tokens for spending
    * Uses infinite approval (MAX_UINT256) by default to avoid future approvals
+   * Returns a Promise that resolves only when the transaction is confirmed on-chain
    */
-  const approveToken = async (amount?: bigint) => {
+  const approveToken = async (amount?: bigint): Promise<void> => {
     if (!tokenAddress || !spenderAddress) {
       throw new Error('Token address or spender address not provided');
     }
@@ -139,18 +159,24 @@ export function useTokenApproval({
     // Use infinite approval by default for gas efficiency
     const approvalAmount = amount || MAX_UINT256;
 
-    try {
-      // @ts-ignore - wagmi v2 writeContract signature compatibility
-      approve({
-        address: tokenAddress,
-        abi: ERC20_ABI,
-        functionName: 'approve',
-        args: [spenderAddress, approvalAmount],
-      });
-    } catch (error) {
-      console.error('Approval error:', error);
-      throw error;
-    }
+    return new Promise((resolve, reject) => {
+      try {
+        // Store promise callbacks for later resolution
+        pendingPromise.current = { resolve, reject };
+
+        // @ts-ignore - wagmi v2 writeContract signature compatibility
+        approve({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [spenderAddress, approvalAmount],
+        });
+      } catch (error) {
+        console.error('Approval error:', error);
+        pendingPromise.current = null;
+        reject(error);
+      }
+    });
   };
 
   const reset = () => {
@@ -164,6 +190,7 @@ export function useTokenApproval({
     isApproving,
     allowance: currentAllowance,
     approvalState,
+    approvalHash,
     reset,
   };
 }

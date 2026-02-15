@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, Address } from 'viem';
 import { useToast } from './use-toast';
@@ -20,68 +20,96 @@ export function useAddLiquidity() {
   const { address } = useAccount();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const pendingPromise = useRef<{
+    resolve: () => void;
+    reject: (error: any) => void;
+  } | null>(null);
 
   const { writeContract, data: hash, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
   });
 
-  const addLiquidity = async (params: AddLiquidityParams) => {
+  const addLiquidity = async (params: AddLiquidityParams): Promise<void> => {
     if (!address) {
       toast({
         title: 'Wallet Not Connected',
         description: 'Please connect your wallet to add liquidity',
         variant: 'destructive',
       });
-      return;
+      throw new Error('Wallet not connected');
     }
 
-    try {
-      setIsLoading(true);
+    return new Promise((resolve, reject) => {
+      try {
+        setIsLoading(true);
 
-      // Parse amounts to wei
-      const amountADesiredWei = parseUnits(params.amountADesired, params.decimalsA);
-      const amountBDesiredWei = parseUnits(params.amountBDesired, params.decimalsB);
-      const amountAMinWei = parseUnits(params.amountAMin, params.decimalsA);
-      const amountBMinWei = parseUnits(params.amountBMin, params.decimalsB);
+        // Store promise callbacks for later resolution
+        pendingPromise.current = { resolve, reject };
 
-      // Call addLiquidity on the pool contract
-      await writeContract({
-        address: params.poolAddress,
-        abi: SAMMPoolABI,
-        functionName: 'addLiquidity',
-        args: [
-          amountADesiredWei,
-          amountBDesiredWei,
-          amountAMinWei,
-          amountBMinWei,
-          address, // recipient
-        ],
-      });
+        // Parse amounts to wei
+        const amountADesiredWei = parseUnits(params.amountADesired, params.decimalsA);
+        const amountBDesiredWei = parseUnits(params.amountBDesired, params.decimalsB);
+        const amountAMinWei = parseUnits(params.amountAMin, params.decimalsA);
+        const amountBMinWei = parseUnits(params.amountBMin, params.decimalsB);
 
-      toast({
-        title: 'Transaction Submitted',
-        description: 'Adding liquidity to pool...',
-      });
-    } catch (error: any) {
-      console.error('Add liquidity error:', error);
-      toast({
-        title: 'Transaction Failed',
-        description: error.message || 'Failed to add liquidity',
-        variant: 'destructive',
-      });
-      setIsLoading(false);
-    }
+        // Call addLiquidity on the pool contract
+        writeContract({
+          address: params.poolAddress,
+          abi: SAMMPoolABI,
+          functionName: 'addLiquidity',
+          args: [
+            amountADesiredWei,
+            amountBDesiredWei,
+            amountAMinWei,
+            amountBMinWei,
+            address, // recipient
+          ],
+        });
+
+        toast({
+          title: 'Transaction Submitted',
+          description: 'Adding liquidity to pool...',
+        });
+      } catch (error: any) {
+        console.error('Add liquidity error:', error);
+        toast({
+          title: 'Transaction Failed',
+          description: error.message || 'Failed to add liquidity',
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+        pendingPromise.current = null;
+        reject(error);
+      }
+    });
   };
 
-  // Handle transaction state changes
-  if (isSuccess && isLoading) {
-    setIsLoading(false);
-  }
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess) {
+      setIsLoading(false);
 
-  if (writeError && isLoading) {
-    setIsLoading(false);
-  }
+      // Resolve pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.resolve();
+        pendingPromise.current = null;
+      }
+    }
+  }, [isSuccess]);
+
+  // Handle transaction error
+  useEffect(() => {
+    if (writeError) {
+      setIsLoading(false);
+
+      // Reject pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.reject(writeError);
+        pendingPromise.current = null;
+      }
+    }
+  }, [writeError]);
 
   return {
     addLiquidity,

@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Token } from "@/types/tokens";
 
 interface TokenLogoProps {
-  symbol: string;
+  symbol?: string;
   logoURI?: string;
   icon?: string;
+  token?: Token;
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 }
@@ -22,14 +24,20 @@ const sizeClasses = {
  * 3. Fall back to first letter of symbol
  */
 export default function TokenLogo({
-  symbol,
-  logoURI,
-  icon,
+  symbol: propSymbol,
+  logoURI: propLogoURI,
+  icon: propIcon,
+  token,
   size = "md",
   className = "",
 }: TokenLogoProps) {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
+
+  // Use token props if provided, otherwise use individual props
+  const symbol = token?.symbol || propSymbol || "?";
+  const logoURI = token?.logoURI || propLogoURI;
+  const icon = token?.icon || propIcon;
 
   const showImage = logoURI && !imageError;
   const showIcon = !showImage && icon;

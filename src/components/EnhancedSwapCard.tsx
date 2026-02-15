@@ -9,8 +9,8 @@ import { sammApi } from "@/services/sammApi";
 import { useToast } from "@/hooks/use-toast";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { commonTokens } from "@/config/tokens";
-import { useTokenApproval } from "@/hooks/useTokenApproval";
-import { useSwapExecution } from "@/hooks/useSwapExecution";
+import { useBatchSwap } from "@/hooks/useBatchSwap";
+import { BatchProgressModal } from "@/components/BatchProgressModal";
 import { getCrossPoolRouter } from "@/config/contracts";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenPrice } from "@/hooks/useTokenPrice";
@@ -63,26 +63,18 @@ const EnhancedSwapCard = () => {
   // Get router address for approval
   const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
 
-  // Calculate amount needed for approval
-  const amountNeeded = fromValue && fromToken.decimals
-    ? BigInt(Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)))
-    : 0n;
-
-  // Token approval hook
-  const {
-    needsApproval,
-    approveToken,
-    isApproving,
-    approvalState,
-  } = useTokenApproval({
-    tokenAddress: fromToken.address as Address,
-    spenderAddress: routerAddress,
-    amountNeeded,
-    enabled: needsTokenApproval && isConnected && !!fromValue,
+  // Batch swap hook - handles approval + swap in single user action
+  const batchSwap = useBatchSwap({
+    fromToken: fromTokenConfig,
+    toToken: toTokenConfig,
+    amountIn: quoteData?.amountIn,
+    amountOut: quoteData?.amountOut,
+    fromDecimals: fromToken.decimals,
+    toDecimals: toToken.decimals,
+    quoteData: quoteData,
+    slippageBps: undefined, // Use default slippage from quote
+    deadline: undefined, // Use default deadline
   });
-
-  // Swap execution hook
-  const { executeSwap, swapState, isLoading: isSwapping, reset: resetSwap } = useSwapExecution();
 
   // Create ConfigToken objects for balance/price hooks
   const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);
@@ -161,14 +153,14 @@ const EnhancedSwapCard = () => {
 
   // Reset swap state when tokens or values change
   useEffect(() => {
-    if (swapState === 'success' || swapState === 'error') {
-      resetSwap();
+    if (batchSwap.currentStep === 'success' || batchSwap.currentStep === 'error') {
+      batchSwap.reset();
     }
   }, [fromToken.address, toToken.address, fromValue]);
 
   // Clear inputs and refresh balances after successful swap
   useEffect(() => {
-    if (swapState === 'success') {
+    if (batchSwap.currentStep === 'success') {
       // Clear input values
       setFromValue("");
       setToValue("");
@@ -182,12 +174,12 @@ const EnhancedSwapCard = () => {
 
       // Reset swap state after a delay
       const timer = setTimeout(() => {
-        resetSwap();
+        batchSwap.reset();
       }, 3000);
 
       return () => clearTimeout(timer);
     }
-  }, [swapState, resetSwap, refetchFromBalance, refetchToBalance]);
+  }, [batchSwap.currentStep, batchSwap.reset, refetchFromBalance, refetchToBalance]);
 
 
 
@@ -468,41 +460,23 @@ const EnhancedSwapCard = () => {
     }
 
     try {
-      // Step 1: Approve token if needed
-      if (needsTokenApproval && needsApproval) {
-        approveToken();
-        toast({
-          title: "Approval Pending",
-          description: "Please sign the approval transaction in your wallet",
-        });
-        return; // User will click swap again after approval completes
-      }
+      // Execute batch swap (approval + swap in single user action)
+      await batchSwap.executeBatchSwap();
 
-      // Use the exact wei values from the quote response
-      // Don't convert display values back to wei (loses precision for 18-decimal tokens)
-      const amountInWei = quoteData.amountIn;
-      const amountOutWei = quoteData.amountOut;
-
-      console.log('Executing swap with exact quote values:', {
-        amountInWei,
-        amountOutWei,
-        fromToken: fromToken.symbol,
-        toToken: toToken.symbol
-      });
-
-      // Step 2: Execute swap
-      executeSwap({
-        fromToken: fromToken.address as Address,
-        toToken: toToken.address as Address,
-        amountIn: amountInWei,
-        amountOut: amountOutWei,
-        fromDecimals: fromToken.decimals,
-        toDecimals: toToken.decimals,
-        quoteData,
-      });
+      // Success! Modal will show complete state
+      setTimeout(() => {
+        batchSwap.reset();
+        // Clear form
+        setFromValue("");
+        setToValue("");
+        setQuoteData(null);
+        // Refresh balances
+        refetchFromBalance();
+        refetchToBalance();
+      }, 3000);
     } catch (error: any) {
-      console.error('Swap failed:', error);
-      // Error toast is already shown by the hooks
+      console.error('Batch swap failed:', error);
+      // Error is shown in BatchProgressModal
     }
   };
 
@@ -511,12 +485,26 @@ const EnhancedSwapCard = () => {
     if (!isConnected) return "Connect Wallet";
     if (!fromValue || !toValue) return "Enter an amount";
     if (loading) return "Fetching quote...";
-    if (needsTokenApproval && needsApproval) return `Approve ${fromToken.symbol}`;
-    if (isApproving) return "Approving...";
-    if (swapState === 'signing') return "Sign in wallet...";
-    if (swapState === 'confirming' || isSwapping) return "Confirming...";
-    if (swapState === 'success') return "Swap Successful!";
-    return "Swap";
+
+    // Batch swap states
+    switch (batchSwap.currentStep) {
+      case 'checking':
+        return "Checking approval...";
+      case 'approving':
+        return `Approving ${fromToken.symbol}...`;
+      case 'approved':
+        return "Approved!";
+      case 'swapping':
+        return "Swapping...";
+      case 'success':
+        return "Swap Successful!";
+      case 'error':
+        return "Try Again";
+      default:
+        // Show "Approve & Swap" if approval needed, otherwise "Swap"
+        const needsApproval = batchSwap.steps.some(step => step.label.includes('Approve') && step.status === 'pending');
+        return needsApproval ? `Approve & Swap` : "Swap";
+    }
   };
 
   // Button should be disabled during loading or transaction states
@@ -524,9 +512,8 @@ const EnhancedSwapCard = () => {
     !fromValue ||
     loading ||
     !toValue ||
-    isApproving ||
-    isSwapping ||
-    swapState === 'confirming';
+    batchSwap.isLoading ||
+    batchSwap.currentStep === 'success';
 
   return (
     <>
@@ -632,46 +619,6 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Transaction Status Indicator */}
-          {swapState === 'confirming' && (
-            <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <div className="flex items-center gap-2 text-sm text-blue-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Confirming transaction...</span>
-              </div>
-            </div>
-          )}
-
-          {swapState === 'success' && (
-            <div className="mt-4 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-              <div className="flex items-center gap-2 text-sm text-green-500">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Swap completed successfully!</span>
-              </div>
-            </div>
-          )}
-
-          {swapState === 'error' && (
-            <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 text-red-500">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Transaction failed</span>
-                </div>
-                <Button
-                  onClick={() => {
-                    resetSwap();
-                    handleSwap();
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                >
-                  Retry
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Swap Action Button */}
           <Button
@@ -705,6 +652,15 @@ const EnhancedSwapCard = () => {
         onClose={() => setModalOpen(false)}
         onSelect={handleTokenSelect}
         excludeToken={selectingFor === "from" ? toToken.symbol : fromToken.symbol}
+      />
+
+      {/* Batch Progress Modal */}
+      <BatchProgressModal
+        isOpen={batchSwap.currentStep !== 'idle'}
+        onClose={batchSwap.reset}
+        title="Executing Swap"
+        steps={batchSwap.steps}
+        canClose={batchSwap.currentStep === 'success' || batchSwap.currentStep === 'error'}
       />
     </>
   );

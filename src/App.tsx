@@ -13,6 +13,8 @@ import { riseChain } from "@/config/chains";
 import { NetworkProvider } from "@/contexts/NetworkContext";
 import Index from "./pages/Index";
 import Pools from "./pages/Pools";
+import Portfolio from "./pages/Portfolio";
+import TransactionHistory from "./pages/TransactionHistory";
 import NotFound from "./pages/NotFound";
 
 import "@rainbow-me/rainbowkit/styles.css";
@@ -57,6 +59,8 @@ const App = () => (
                   <Routes>
                     <Route path="/" element={<Index />} />
                     <Route path="/pools" element={<Pools />} />
+                    <Route path="/portfolio" element={<Portfolio />} />
+                    <Route path="/history" element={<TransactionHistory />} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
                   </Routes>

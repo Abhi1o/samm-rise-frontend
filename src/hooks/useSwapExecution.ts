@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { Address } from 'viem';
+import { Address, formatUnits } from 'viem';
 import { CROSS_POOL_ROUTER_ABI } from '@/config/abis';
 import { getCrossPoolRouter } from '@/config/contracts';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_DEADLINE, DEFAULT_SLIPPAGE } from '@/utils/constants';
+import { transactionStorage } from '@/services/transactionStorage';
+import { getTokensForChain } from '@/config/tokens';
 
 export type SwapState = 'idle' | 'preparing' | 'signing' | 'confirming' | 'success' | 'error';
 
@@ -39,6 +41,11 @@ export function useSwapExecution(): UseSwapExecutionReturn {
   const [swapState, setSwapState] = useState<SwapState>('idle');
   const submittedToastShown = useRef<string | null>(null);
   const successToastShown = useRef<string | null>(null);
+  const currentSwapParams = useRef<SwapParams | null>(null);
+  const pendingPromise = useRef<{
+    resolve: () => void;
+    reject: (error: any) => void;
+  } | null>(null);
 
   // Write contract for swap
   const {
@@ -153,58 +160,66 @@ export function useSwapExecution(): UseSwapExecutionReturn {
   );
 
   /**
-   * Execute swap transaction with retry logic
+   * Execute swap transaction - returns a Promise that resolves when transaction is confirmed
    */
   const executeSwap = useCallback(
-    async (params: SwapParams) => {
+    async (params: SwapParams): Promise<void> => {
       if (!userAddress || !chainId) {
         throw new Error('Wallet not connected');
       }
 
-      try {
-        setSwapState('preparing');
+      return new Promise((resolve, reject) => {
+        try {
+          setSwapState('preparing');
 
-        // Get router address for current chain
-        const routerAddress = getCrossPoolRouter(chainId);
+          // Store promise callbacks for later resolution
+          pendingPromise.current = { resolve, reject };
 
-        // Build swap parameters
-        const swapParams = buildSwapPath(params);
+          // Store params for transaction tracking
+          currentSwapParams.current = params;
 
-        console.log('Executing swap:', {
-          router: routerAddress,
-          hops: swapParams.hops,
-          maxAmountIn: swapParams.maxAmountIn.toString(),
-          deadline: swapParams.deadline.toString(),
-          recipient: swapParams.recipient,
-        });
+          // Get router address for current chain
+          const routerAddress = getCrossPoolRouter(chainId);
 
-        setSwapState('signing');
+          // Build swap parameters
+          const swapParams = buildSwapPath(params);
 
-        console.log('Calling swap contract...');
+          console.log('Executing swap:', {
+            router: routerAddress,
+            hops: swapParams.hops,
+            maxAmountIn: swapParams.maxAmountIn.toString(),
+            deadline: swapParams.deadline.toString(),
+            recipient: swapParams.recipient,
+          });
 
-        // Execute swap - this will open the wallet for signature
-        // @ts-ignore - wagmi v2 type inference issue with complex ABIs
-        swap({
-          address: routerAddress,
-          abi: CROSS_POOL_ROUTER_ABI,
-          functionName: 'swapExactOutput',
-          args: [swapParams],
-        });
+          setSwapState('signing');
 
-        // State will be updated by useEffect when transaction is submitted
-        console.log('Swap contract call initiated, waiting for signature...');
-      } catch (error: any) {
-        console.error('Swap execution failed:', error);
-        setSwapState('error');
+          console.log('Calling swap contract...');
 
-        toast({
-          title: 'Swap Failed',
-          description: error.message || 'Failed to execute swap',
-          variant: 'destructive',
-        });
+          // Execute swap - this will open the wallet for signature
+          // @ts-ignore - wagmi v2 type inference issue with complex ABIs
+          swap({
+            address: routerAddress,
+            abi: CROSS_POOL_ROUTER_ABI,
+            functionName: 'swapExactOutput',
+            args: [swapParams],
+          });
 
-        throw error;
-      }
+          console.log('Swap contract call initiated, waiting for confirmation...');
+        } catch (error: any) {
+          console.error('Swap execution failed:', error);
+          setSwapState('error');
+          pendingPromise.current = null;
+
+          toast({
+            title: 'Swap Failed',
+            description: error.message || 'Failed to execute swap',
+            variant: 'destructive',
+          });
+
+          reject(error);
+        }
+      });
     },
     [userAddress, chainId, buildSwapPath, swap, toast]
   );
@@ -233,10 +248,55 @@ export function useSwapExecution(): UseSwapExecutionReturn {
           title: 'Transaction Submitted',
           description: `Waiting for confirmation... Hash: ${swapHash.slice(0, 10)}...`,
         });
+
+        // Save pending transaction to history
+        if (userAddress && chainId && currentSwapParams.current) {
+          console.log('[useSwapExecution] Saving transaction to history', {
+            userAddress,
+            chainId,
+            hash: swapHash,
+          });
+
+          const params = currentSwapParams.current;
+          const tokens = getTokensForChain(chainId);
+          const fromToken = tokens.find(t => t.address.toLowerCase() === params.fromToken.toLowerCase());
+          const toToken = tokens.find(t => t.address.toLowerCase() === params.toToken.toLowerCase());
+
+          transactionStorage.saveTransaction(userAddress, chainId, {
+            hash: swapHash,
+            type: 'swap',
+            status: 'pending',
+            timestamp: Date.now(),
+            chainId,
+            userAddress: userAddress.toLowerCase(),
+            swapData: {
+              fromToken: fromToken?.symbol || 'Unknown',
+              toToken: toToken?.symbol || 'Unknown',
+              fromAmount: params.amountIn,
+              toAmount: params.amountOut,
+              route: params.quoteData?.route,
+            },
+          });
+
+          console.log('[useSwapExecution] Transaction saved to history successfully');
+        } else {
+          console.warn('[useSwapExecution] Cannot save transaction:', {
+            hasUserAddress: !!userAddress,
+            hasChainId: !!chainId,
+            hasSwapParams: !!currentSwapParams.current,
+          });
+        }
       }
     } else if (isSwapSuccess) {
       console.log('Setting state to: success');
       setSwapState('success');
+
+      // Resolve pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.resolve();
+        pendingPromise.current = null;
+      }
+
       // Only show toast once per transaction
       if (swapHash && successToastShown.current !== swapHash) {
         successToastShown.current = swapHash;
@@ -244,16 +304,33 @@ export function useSwapExecution(): UseSwapExecutionReturn {
           title: 'Swap Successful!',
           description: 'Your transaction has been confirmed',
         });
+
+        // Update transaction status to success
+        if (userAddress && chainId) {
+          transactionStorage.updateTransactionStatus(userAddress, chainId, swapHash, 'success');
+        }
       }
     } else if (swapError || swapReceiptError) {
       console.log('Setting state to: error');
       setSwapState('error');
       const errorMessage = swapError?.message || swapReceiptError?.message || 'Transaction failed';
+
+      // Reject pending promise if exists
+      if (pendingPromise.current) {
+        pendingPromise.current.reject(new Error(errorMessage));
+        pendingPromise.current = null;
+      }
+
       toast({
         title: 'Swap Failed',
         description: errorMessage,
         variant: 'destructive',
       });
+
+      // Update transaction status to failed if we have a hash
+      if (swapHash && userAddress && chainId) {
+        transactionStorage.updateTransactionStatus(userAddress, chainId, swapHash, 'failed');
+      }
     }
   }, [isSwapPending, isSwapConfirming, isSwapSuccess, swapHash, swapError, swapReceiptError, toast]);
 

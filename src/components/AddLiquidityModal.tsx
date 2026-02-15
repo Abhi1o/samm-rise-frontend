@@ -11,8 +11,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { SAMMPoolABI } from "@/config/abis";
 import { formatUnits, parseUnits, Address } from "viem";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
-import { useTokenApproval } from "@/hooks/useTokenApproval";
-import { useAddLiquidity } from "@/hooks/useAddLiquidity";
+import { useBatchAddLiquidity } from "@/hooks/useBatchAddLiquidity";
 import { useToast } from "@/hooks/use-toast";
 
 interface AddLiquidityModalProps {
@@ -21,7 +20,40 @@ interface AddLiquidityModalProps {
 }
 
 type ShardSize = "Small" | "Medium" | "Large";
-type LiquidityState = 'idle' | 'approving_token0' | 'approving_token1' | 'adding' | 'confirming' | 'success' | 'error';
+
+/**
+ * Format a number for display, avoiding scientific notation
+ * @param num - Number to format
+ * @param maxDecimals - Maximum decimal places (default: 6)
+ */
+const formatDisplayNumber = (num: number, maxDecimals: number = 6): string => {
+  if (num === 0) return '0';
+  if (!isFinite(num)) return '0';
+
+  // For extremely large numbers (> 1 quadrillion), use exponential notation
+  if (Math.abs(num) > 1e12) {
+    return num.toExponential(2);
+  }
+
+  // For large numbers (thousands+), format with comma separators
+  if (Math.abs(num) >= 1) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.min(maxDecimals, 4),
+    });
+  }
+
+  // For numbers between 0 and 1, show more decimal places
+  if (Math.abs(num) >= 0.0001) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxDecimals,
+    });
+  }
+
+  // For very small numbers, use exponential notation
+  return num.toExponential(2);
+};
 
 const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   const { selectedNetwork } = useNetwork();
@@ -42,7 +74,6 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
-  const [liquidityState, setLiquidityState] = useState<LiquidityState>('idle');
 
   // Update tokens when network changes
   useEffect(() => {
@@ -89,64 +120,34 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     refetch: refetchBalance1 
   } = useTokenBalance(selectedToken1);
 
-  // Token approvals
-  const {
-    needsApproval: needsApproval0,
-    approveToken: approve0,
-    isApproving: isApproving0,
-    approvalState: approvalState0,
-  } = useTokenApproval({
-    tokenAddress: selectedToken0?.address as Address,
-    spenderAddress: selectedPool?.address as Address,
-    amountNeeded: amount0 ? parseUnits(amount0, selectedToken0?.decimals || 18) : 0n,
-    enabled: !!selectedPool && !!amount0,
+  // Calculate minimum amounts with slippage
+  const amountAMin = amount0 && slippage
+    ? (parseFloat(amount0) * (1 - parseFloat(slippage) / 100)).toString()
+    : '0';
+  const amountBMin = amount1 && slippage
+    ? (parseFloat(amount1) * (1 - parseFloat(slippage) / 100)).toString()
+    : '0';
+
+  // Batch add liquidity hook - handles both approvals + add liquidity in single user action
+  const batchLiquidity = useBatchAddLiquidity({
+    poolAddress: selectedPool?.address as Address,
+    poolTokenA: poolState?.tokenA as Address, // Pool's canonical tokenA from getReserves
+    poolTokenB: poolState?.tokenB as Address, // Pool's canonical tokenB from getReserves
+    token0: selectedToken0,
+    token1: selectedToken1,
+    amount0: amount0,
+    amount1: amount1,
+    amount0Min: amountAMin,
+    amount1Min: amountBMin,
   });
 
-  const {
-    needsApproval: needsApproval1,
-    approveToken: approve1,
-    isApproving: isApproving1,
-    approvalState: approvalState1,
-  } = useTokenApproval({
-    tokenAddress: selectedToken1?.address as Address,
-    spenderAddress: selectedPool?.address as Address,
-    amountNeeded: amount1 ? parseUnits(amount1, selectedToken1?.decimals || 18) : 0n,
-    enabled: !!selectedPool && !!amount1,
-  });
-
-  // Add liquidity hook
-  const { addLiquidity, isLoading: isAddingLiquidity, isSuccess: isAddSuccess, hash } = useAddLiquidity();
-
-  // Track the last processed transaction hash to prevent duplicate toasts
-  const lastProcessedHash = useRef<string | undefined>(undefined);
-
-  // Update liquidity state based on approval and transaction states
+  // Handle success state - refresh balances, show success inline (no auto-close)
   useEffect(() => {
-    if (isApproving0) {
-      setLiquidityState('approving_token0');
-    } else if (isApproving1) {
-      setLiquidityState('approving_token1');
-    } else if (isAddingLiquidity) {
-      if (liquidityState === 'adding') {
-        setLiquidityState('confirming');
-      } else if (liquidityState !== 'confirming') {
-        setLiquidityState('adding');
-      }
-    } else if (isAddSuccess && hash && hash !== lastProcessedHash.current) {
-      // Only set success if we haven't processed this transaction yet
-      lastProcessedHash.current = hash;
-      setLiquidityState('success');
-    } else if (liquidityState !== 'success' && liquidityState !== 'error') {
-      setLiquidityState('idle');
-    }
-  }, [isApproving0, isApproving1, isAddingLiquidity, isAddSuccess, liquidityState, hash]);
-
-  // Handle success state - show toast, refresh balances, clear form, and auto-reset
-  useEffect(() => {
-    if (liquidityState === 'success') {
-      // Clear form immediately (always, not just once)
-      setAmount0("");
-      setAmount1("");
+    if (batchLiquidity.currentStep === 'success') {
+      // Refresh balances immediately
+      console.log('Refreshing balances after successful liquidity addition...');
+      refetchBalance0();
+      refetchBalance1();
 
       // Show success toast only once
       if (!successToastShown.current) {
@@ -155,59 +156,83 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
           title: "Liquidity Added Successfully!",
           description: "Your liquidity has been added to the pool",
         });
-
-        // Refresh balances immediately
-        console.log('Refreshing balances after successful liquidity addition...');
-        refetchBalance0();
-        refetchBalance1();
       }
-
-      // Auto-close modal after 3 seconds (same as swap card)
-      const timer = setTimeout(() => {
-        onClose();
-      }, 3000);
-
-      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liquidityState, onClose, toast]);
+  }, [batchLiquidity.currentStep, toast]);
 
   // Reset state when modal closes or opens
   useEffect(() => {
     if (!isOpen) {
-      // Reset all state when modal is closed
-      setLiquidityState('idle');
+      batchLiquidity.reset();
       successToastShown.current = false;
-      // Don't reset lastProcessedHash - keep it to prevent re-triggering success
       setAmount0("");
       setAmount1("");
     } else {
-      // Also reset when modal opens (fresh start)
-      setLiquidityState('idle');
+      batchLiquidity.reset();
       successToastShown.current = false;
-      // Don't reset lastProcessedHash - keep it to prevent re-triggering success
       setAmount0("");
       setAmount1("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Calculate pool price and reserves
   const poolInfo = useMemo(() => {
     if (!poolState || !selectedToken0 || !selectedToken1) return null;
 
-    const [pairToken0] = selectedPool?.pairName.split('-') || [];
-    const isToken0First = pairToken0 === selectedToken0.symbol;
+    // Get token addresses from pool state
+    const poolTokenA = poolState.tokenA?.toLowerCase();
+    const poolTokenB = poolState.tokenB?.toLowerCase();
+    const token0Addr = selectedToken0.address.toLowerCase();
+    const token1Addr = selectedToken1.address.toLowerCase();
 
-    const reserveA = poolState.reserveA;
-    const reserveB = poolState.reserveB;
+    // Determine which reserve corresponds to which selected token
+    let reserve0: bigint, reserve1: bigint;
+    if (poolTokenA === token0Addr) {
+      // selectedToken0 is tokenA in the pool
+      reserve0 = poolState.reserveA;
+      reserve1 = poolState.reserveB;
+    } else if (poolTokenB === token0Addr) {
+      // selectedToken0 is tokenB in the pool
+      reserve0 = poolState.reserveB;
+      reserve1 = poolState.reserveA;
+    } else {
+      // Fallback: token not found in pool (shouldn't happen)
+      console.error('[AddLiquidityModal] Token mismatch in pool', {
+        poolTokenA,
+        poolTokenB,
+        token0Addr,
+        token1Addr,
+      });
+      return null;
+    }
 
-    const reserve0 = isToken0First ? reserveA : reserveB;
-    const reserve1 = isToken0First ? reserveB : reserveA;
-
+    // Format reserves with correct decimals
     const reserve0Formatted = parseFloat(formatUnits(reserve0, selectedToken0.decimals));
     const reserve1Formatted = parseFloat(formatUnits(reserve1, selectedToken1.decimals));
 
-    const price = reserve1Formatted / reserve0Formatted;
+    // Calculate price with safeguards
+    let price = 0;
+    if (reserve0Formatted > 0 && reserve1Formatted > 0) {
+      price = reserve1Formatted / reserve0Formatted;
+    }
+
+    // Debug logging
+    console.log('[AddLiquidityModal] Pool Info:', {
+      pool: selectedPool?.name,
+      poolTokenA,
+      poolTokenB,
+      token0: `${selectedToken0.symbol} (${token0Addr})`,
+      token1: `${selectedToken1.symbol} (${token1Addr})`,
+      reserveA: poolState.reserveA.toString(),
+      reserveB: poolState.reserveB.toString(),
+      reserve0: reserve0.toString(),
+      reserve1: reserve1.toString(),
+      reserve0Formatted,
+      reserve1Formatted,
+      price,
+    });
 
     return {
       reserve0,
@@ -251,96 +276,71 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     }
 
     try {
-      // Step 1: Approve Token 0 if needed
-      if (needsApproval0) {
-        setLiquidityState('approving_token0');
-        await approve0();
-        toast({
-          title: "Approval Pending",
-          description: `Please sign the approval for ${selectedToken0.symbol}`,
-        });
-        return; // Wait for approval to complete, user will click again
-      }
-
-      // Step 2: Approve Token 1 if needed
-      if (needsApproval1) {
-        setLiquidityState('approving_token1');
-        await approve1();
-        toast({
-          title: "Approval Pending",
-          description: `Please sign the approval for ${selectedToken1.symbol}`,
-        });
-        return; // Wait for approval to complete, user will click again
-      }
-
-      // Step 3: Add liquidity
-      setLiquidityState('adding');
-
-      // Calculate minimum amounts with slippage
-      const slippageMultiplier = 1 - parseFloat(slippage) / 100;
-      const amountAMin = (parseFloat(amount0) * slippageMultiplier).toFixed(selectedToken0.decimals);
-      const amountBMin = (parseFloat(amount1) * slippageMultiplier).toFixed(selectedToken1.decimals);
-
-      // Determine which token is A and which is B based on pool
-      const [pairToken0, pairToken1] = selectedPool.pairName.split('-');
-      const isToken0First = pairToken0 === selectedToken0.symbol;
-
-      await addLiquidity({
-        poolAddress: selectedPool.address as Address,
-        tokenA: (isToken0First ? selectedToken0.address : selectedToken1.address) as Address,
-        tokenB: (isToken0First ? selectedToken1.address : selectedToken0.address) as Address,
-        amountADesired: isToken0First ? amount0 : amount1,
-        amountBDesired: isToken0First ? amount1 : amount0,
-        amountAMin: isToken0First ? amountAMin : amountBMin,
-        amountBMin: isToken0First ? amountBMin : amountAMin,
-        decimalsA: isToken0First ? selectedToken0.decimals : selectedToken1.decimals,
-        decimalsB: isToken0First ? selectedToken1.decimals : selectedToken0.decimals,
-      });
+      // Execute batch add liquidity (all approvals + add in single user action)
+      await batchLiquidity.executeBatchAddLiquidity();
+      // Success handled by useEffect above
     } catch (error: any) {
-      console.error("Add liquidity error:", error);
-      setLiquidityState('error');
-      // Error toast is shown by the hook
+      console.error("Batch add liquidity error:", error);
+      // Error is shown in BatchProgressModal
     }
   };
 
-  // Get button text based on current state
+  // Get button text based on current state - Premium UX with detailed status
   const getButtonText = () => {
     if (!userAddress) return "Connect Wallet";
     if (!selectedPool) return "Select Pool";
     if (!amount0 || !amount1) return "Enter Amounts";
-    
-    switch (liquidityState) {
+
+    // Batch liquidity states - Show signing, processing, and completion states
+    switch (batchLiquidity.currentStep) {
+      case 'checking':
+        return "Sign Transaction";
       case 'approving_token0':
-        return `Approving ${selectedToken0?.symbol}...`;
+        return `Processing Approval (${selectedToken0?.symbol})...`;
+      case 'approved_token0':
+        return batchLiquidity.steps.filter(s => s.label.includes('Approve')).length > 1
+          ? "Sign Next Transaction"
+          : "Sign Transaction";
       case 'approving_token1':
-        return `Approving ${selectedToken1?.symbol}...`;
-      case 'adding':
-        return "Sign in wallet...";
-      case 'confirming':
-        return "Confirming...";
+        return `Processing Approval (${selectedToken1?.symbol})...`;
+      case 'approved_token1':
+        return "Sign Transaction";
+      case 'adding_liquidity':
+        return "Processing Transaction...";
       case 'success':
-        return "Liquidity Added!";
+        return "Transaction Complete ✓";
       case 'error':
         return "Try Again";
       default:
-        if (needsApproval0) return `Approve ${selectedToken0?.symbol}`;
-        if (needsApproval1) return `Approve ${selectedToken1?.symbol}`;
-        return "Add Liquidity";
+        // Show appropriate text based on what approvals are needed
+        const needsApprovals = batchLiquidity.steps.filter(s => s.label.includes('Approve')).length;
+        return needsApprovals > 0 ? "Approve & Add Liquidity" : "Add Liquidity";
     }
   };
 
+  // Get the active transaction hash for display
+  const getActiveTransactionHash = () => {
+    const activeStep = batchLiquidity.steps.find(s => s.status === 'active' || s.status === 'complete');
+    return activeStep?.hash;
+  };
+
+  // Get error message from batch liquidity
+  const getErrorMessage = () => {
+    if (batchLiquidity.currentStep === 'error' && batchLiquidity.error) {
+      return batchLiquidity.error.message || 'Transaction failed';
+    }
+    return null;
+  };
+
   const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading;
-  const isButtonDisabled = 
-    !selectedPool || 
-    !amount0 || 
-    !amount1 || 
-    !userAddress || 
+  const isButtonDisabled =
+    !selectedPool ||
+    !amount0 ||
+    !amount1 ||
+    !userAddress ||
     isLoading ||
-    liquidityState === 'approving_token0' ||
-    liquidityState === 'approving_token1' ||
-    liquidityState === 'adding' ||
-    liquidityState === 'confirming' ||
-    liquidityState === 'success';
+    batchLiquidity.isLoading ||
+    batchLiquidity.currentStep === 'success';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -367,7 +367,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 <button
                   onClick={() => setToken0DropdownOpen(!token0DropdownOpen)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors"
-                  disabled={isLoading || liquidityState !== 'idle'}
+                  disabled={isLoading || batchLiquidity.currentStep !== 'idle'}
                 >
                   <TokenLogo
                     symbol={selectedToken0?.symbol || ""}
@@ -411,7 +411,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 <button
                   onClick={() => setToken1DropdownOpen(!token1DropdownOpen)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border hover:border-primary/50 transition-colors"
-                  disabled={isLoading || liquidityState !== 'idle'}
+                  disabled={isLoading || batchLiquidity.currentStep !== 'idle'}
                 >
                   <TokenLogo
                     symbol={selectedToken1?.symbol || ""}
@@ -467,7 +467,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                       ? "bg-primary/20 text-primary border border-primary"
                       : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
                   }`}
-                  disabled={isLoading || liquidityState !== 'idle'}
+                  disabled={isLoading || batchLiquidity.currentStep !== 'idle'}
                 >
                   {size}
                 </button>
@@ -482,16 +482,16 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 <div>
                   <p className="text-muted-foreground mb-1">Pool Reserves</p>
                   <p className="font-semibold">
-                    {poolInfo.reserve0Formatted.toFixed(4)} {selectedToken0?.symbol}
+                    {formatDisplayNumber(poolInfo.reserve0Formatted, 4)} {selectedToken0?.symbol}
                   </p>
                   <p className="font-semibold">
-                    {poolInfo.reserve1Formatted.toFixed(4)} {selectedToken1?.symbol}
+                    {formatDisplayNumber(poolInfo.reserve1Formatted, 4)} {selectedToken1?.symbol}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground mb-1">Current Price</p>
                   <p className="font-semibold">
-                    1 {selectedToken0?.symbol} = {poolInfo.price.toFixed(6)} {selectedToken1?.symbol}
+                    1 {selectedToken0?.symbol} = {formatDisplayNumber(poolInfo.price, 6)} {selectedToken1?.symbol}
                   </p>
                 </div>
               </div>
@@ -537,15 +537,18 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                       value={amount0}
                       onChange={(e) => setAmount0(e.target.value)}
                       className="w-32 text-right text-lg font-semibold bg-transparent border-none focus-visible:ring-0 p-0"
-                      disabled={isLoading || !poolInfo || liquidityState !== 'idle'}
+                      disabled={isLoading || !poolInfo || batchLiquidity.currentStep !== 'idle'}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Balance: {balance0 ? parseFloat(formatUnits(balance0, selectedToken0?.decimals || 18)).toFixed(4) : "0.00"}</span>
-                  {balance0 && liquidityState === 'idle' && (
+                  {balance0 && batchLiquidity.currentStep === 'idle' && (
                     <button
-                      onClick={() => setAmount0(formatUnits(balance0, selectedToken0?.decimals || 18))}
+                      onClick={() => {
+                        const maxAmount = parseFloat(formatUnits(balance0, selectedToken0?.decimals || 18));
+                        setAmount0(maxAmount.toString());
+                      }}
                       className="text-primary hover:underline"
                     >
                       MAX
@@ -573,20 +576,20 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                       value={amount1}
                       onChange={(e) => setAmount1(e.target.value)}
                       className="w-32 text-right text-lg font-semibold bg-transparent border-none focus-visible:ring-0 p-0"
-                      disabled={isLoading || !poolInfo || liquidityState !== 'idle'}
+                      disabled={isLoading || !poolInfo || batchLiquidity.currentStep !== 'idle'}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Balance: {balance1 ? parseFloat(formatUnits(balance1, selectedToken1?.decimals || 18)).toFixed(4) : "0.00"}</span>
-                  {balance1 && liquidityState === 'idle' && (
+                  {balance1 && batchLiquidity.currentStep === 'idle' && (
                     <button
                       onClick={() => {
-                        const maxAmount1 = formatUnits(balance1, selectedToken1?.decimals || 18);
-                        setAmount1(maxAmount1);
+                        const maxAmount1 = parseFloat(formatUnits(balance1, selectedToken1?.decimals || 18));
+                        setAmount1(maxAmount1.toString());
                         // Calculate corresponding amount0
                         if (poolInfo) {
-                          const calculatedAmount0 = parseFloat(maxAmount1) / poolInfo.price;
+                          const calculatedAmount0 = maxAmount1 / poolInfo.price;
                           setAmount0(calculatedAmount0.toFixed(6));
                         }
                       }}
@@ -613,68 +616,152 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                   step="0.1"
                   min="0.1"
                   max="50"
-                  disabled={liquidityState !== 'idle'}
+                  disabled={batchLiquidity.currentStep !== 'idle'}
                 />
                 <span className="text-sm">%</span>
               </div>
             </div>
           )}
 
-          {/* Transaction Status Indicators */}
-          {liquidityState === 'confirming' && (
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-blue-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Confirming transaction...</span>
+          {/* Transaction Progress Status - Inline Display */}
+          {batchLiquidity.currentStep !== 'idle' && batchLiquidity.currentStep !== 'success' && batchLiquidity.currentStep !== 'error' && (
+            <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
+              <div className="space-y-3">
+                {batchLiquidity.steps.map((step, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      {step.status === 'complete' && (
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      )}
+                      {step.status === 'active' && (
+                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                      )}
+                      {step.status === 'pending' && (
+                        <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${
+                        step.status === 'active' ? 'text-primary' :
+                        step.status === 'complete' ? 'text-green-500' :
+                        'text-muted-foreground'
+                      }`}>
+                        {step.label}
+                      </p>
+                      {step.hash && step.status === 'active' && (
+                        <p className="text-xs text-muted-foreground mt-1 font-mono">
+                          {step.hash.slice(0, 10)}...{step.hash.slice(-8)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
+              {batchLiquidity.steps.some(s => s.status === 'active') && (
+                <p className="text-xs text-primary/70 mt-3 text-center">
+                  Please confirm the transaction in your wallet
+                </p>
+              )}
             </div>
           )}
 
-          {liquidityState === 'success' && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-green-500">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Liquidity added successfully!</span>
+          {/* Transaction Success Display */}
+          {batchLiquidity.currentStep === 'success' && (
+            <div className="p-6 rounded-xl bg-green-500/10 border border-green-500/20">
+              <div className="flex items-start gap-3 mb-4">
+                <CheckCircle2 className="w-6 h-6 text-green-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-green-500 mb-1">Transaction Complete!</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your liquidity has been successfully added to the pool
+                  </p>
+                </div>
               </div>
+              {batchLiquidity.steps.filter(s => s.hash).map((step, index) => (
+                <div key={index} className="mt-3">
+                  <p className="text-xs text-muted-foreground mb-1">{step.label}</p>
+                  <a
+                    href={`https://explorer.testnet.riselabs.xyz/tx/${step.hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-mono text-primary hover:underline break-all"
+                  >
+                    {step.hash}
+                  </a>
+                </div>
+              ))}
+              <Button
+                onClick={() => {
+                  batchLiquidity.reset();
+                  successToastShown.current = false;
+                  setAmount0("");
+                  setAmount1("");
+                  onClose();
+                }}
+                className="w-full mt-4"
+                variant="default"
+              >
+                Done
+              </Button>
             </div>
           )}
 
-          {liquidityState === 'error' && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-sm text-red-500">
-                <AlertCircle className="w-4 h-4" />
-                <span>Transaction failed. Please try again.</span>
+          {/* Transaction Error Display */}
+          {batchLiquidity.currentStep === 'error' && (
+            <div className="p-6 rounded-xl bg-destructive/10 border border-destructive/20">
+              <div className="flex items-start gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-destructive flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-destructive mb-1">Transaction Failed</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {getErrorMessage() || 'An error occurred while processing your transaction'}
+                  </p>
+                  {batchLiquidity.steps.find(s => s.hash) && (
+                    <div className="mt-3">
+                      <p className="text-xs text-muted-foreground mb-1">Transaction Hash</p>
+                      <p className="text-xs font-mono text-muted-foreground break-all">
+                        {batchLiquidity.steps.find(s => s.hash)?.hash}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
+              <Button
+                onClick={() => {
+                  batchLiquidity.reset();
+                }}
+                className="w-full"
+                variant="destructive"
+              >
+                Try Again
+              </Button>
             </div>
           )}
 
-          {/* Add Liquidity Button */}
-          <Button
-            variant="swap"
-            size="lg"
-            className="w-full rounded-xl py-6 text-lg font-bold"
-            onClick={handleAddLiquidity}
-            disabled={isButtonDisabled}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              <>
-                {(liquidityState === 'approving_token0' || 
-                  liquidityState === 'approving_token1' || 
-                  liquidityState === 'confirming') && (
+          {/* Add Liquidity Button - Only show when not in success/error state */}
+          {batchLiquidity.currentStep !== 'success' && batchLiquidity.currentStep !== 'error' && (
+            <Button
+              variant="swap"
+              size="lg"
+              className="w-full rounded-xl py-6 text-lg font-bold"
+              onClick={handleAddLiquidity}
+              disabled={isButtonDisabled}
+            >
+              {isLoading ? (
+                <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                )}
-                {liquidityState === 'success' && (
-                  <CheckCircle2 className="w-5 h-5 mr-2" />
-                )}
-                {getButtonText()}
-              </>
-            )}
-          </Button>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  {batchLiquidity.isLoading && (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  )}
+                  {getButtonText()}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

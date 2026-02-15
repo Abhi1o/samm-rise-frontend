@@ -53,6 +53,12 @@ const Header = () => {
               <Link to="/pools" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
                 Pools
               </Link>
+              <Link to="/portfolio" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
+                Portfolio
+              </Link>
+              <Link to="/history" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
+                History
+              </Link>
               <a href="https://samm-2.gitbook.io/samm-docs/" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
                 Docs
               </a>
@@ -192,6 +198,12 @@ const Header = () => {
                 </a>
                 <Link to="/pools" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
                   Pools
+                </Link>
+                <Link to="/portfolio" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
+                  Portfolio
+                </Link>
+                <Link to="/history" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
+                  History
                 </Link>
                 <a href="https://samm-2.gitbook.io/samm-docs/" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
                   Docs
