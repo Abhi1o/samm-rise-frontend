@@ -3,6 +3,8 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { parseUnits, Address } from 'viem';
 import { useToast } from './use-toast';
 import { SAMMPoolABI } from '@/config/abis';
+import { transactionStorage } from '@/services/transactionStorage';
+import { getTokensForChain } from '@/config/tokens';
 
 interface AddLiquidityParams {
   poolAddress: Address;
@@ -17,13 +19,15 @@ interface AddLiquidityParams {
 }
 
 export function useAddLiquidity() {
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const pendingPromise = useRef<{
     resolve: () => void;
     reject: (error: any) => void;
   } | null>(null);
+  const currentParams = useRef<AddLiquidityParams | null>(null);
+  const hashSaved = useRef<string | null>(null);
 
   const { writeContract, data: hash, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -46,6 +50,9 @@ export function useAddLiquidity() {
 
         // Store promise callbacks for later resolution
         pendingPromise.current = { resolve, reject };
+
+        // Store params for transaction tracking
+        currentParams.current = params;
 
         // Parse amounts to wei
         const amountADesiredWei = parseUnits(params.amountADesired, params.decimalsA);
@@ -85,10 +92,51 @@ export function useAddLiquidity() {
     });
   };
 
+  // Save transaction to localStorage when hash is available
+  useEffect(() => {
+    if (hash && address && chainId && currentParams.current && hashSaved.current !== hash) {
+      hashSaved.current = hash;
+
+      const params = currentParams.current;
+      const tokens = getTokensForChain(chainId);
+      const tokenA = tokens.find(t => t.address.toLowerCase() === params.tokenA.toLowerCase());
+      const tokenB = tokens.find(t => t.address.toLowerCase() === params.tokenB.toLowerCase());
+
+      console.log('[useAddLiquidity] Saving transaction to history', {
+        userAddress: address,
+        chainId,
+        hash,
+      });
+
+      transactionStorage.saveTransaction(address, chainId, {
+        hash,
+        type: 'add_liquidity',
+        status: 'pending',
+        timestamp: Date.now(),
+        chainId,
+        userAddress: address.toLowerCase(),
+        liquidityData: {
+          pool: `${tokenA?.symbol || 'Unknown'}-${tokenB?.symbol || 'Unknown'}`,
+          token0: tokenA?.symbol || 'Unknown',
+          token1: tokenB?.symbol || 'Unknown',
+          amount0: params.amountADesired,
+          amount1: params.amountBDesired,
+        },
+      });
+
+      console.log('[useAddLiquidity] Transaction saved to history successfully');
+    }
+  }, [hash, address, chainId]);
+
   // Handle transaction success
   useEffect(() => {
     if (isSuccess) {
       setIsLoading(false);
+
+      // Update transaction status to success
+      if (hash && address && chainId) {
+        transactionStorage.updateTransactionStatus(address, chainId, hash, 'success');
+      }
 
       // Resolve pending promise if exists
       if (pendingPromise.current) {
@@ -96,12 +144,17 @@ export function useAddLiquidity() {
         pendingPromise.current = null;
       }
     }
-  }, [isSuccess]);
+  }, [isSuccess, hash, address, chainId]);
 
   // Handle transaction error
   useEffect(() => {
     if (writeError) {
       setIsLoading(false);
+
+      // Update transaction status to failed if we have a hash
+      if (hash && address && chainId) {
+        transactionStorage.updateTransactionStatus(address, chainId, hash, 'failed');
+      }
 
       // Reject pending promise if exists
       if (pendingPromise.current) {
@@ -109,7 +162,7 @@ export function useAddLiquidity() {
         pendingPromise.current = null;
       }
     }
-  }, [writeError]);
+  }, [writeError, hash, address, chainId]);
 
   return {
     addLiquidity,

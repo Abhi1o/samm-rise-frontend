@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle } from "lucide-react";
 import { useAccount, useChainId } from "wagmi";
 import { Address } from "viem";
 import TokenInput from "./TokenInput";
@@ -10,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { commonTokens } from "@/config/tokens";
 import { useBatchSwap } from "@/hooks/useBatchSwap";
-import { BatchProgressModal } from "@/components/BatchProgressModal";
 import { getCrossPoolRouter } from "@/config/contracts";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenPrice } from "@/hooks/useTokenPrice";
@@ -158,28 +157,15 @@ const EnhancedSwapCard = () => {
     }
   }, [fromToken.address, toToken.address, fromValue]);
 
-  // Clear inputs and refresh balances after successful swap
+  // Refresh balances when swap succeeds (but don't auto-reset, let user click "Done")
   useEffect(() => {
     if (batchSwap.currentStep === 'success') {
-      // Clear input values
-      setFromValue("");
-      setToValue("");
-      setQuoteData(null);
-      setRouteInfo("");
-
       // Refresh token balances immediately
       console.log('Refreshing balances after successful swap...');
       refetchFromBalance();
       refetchToBalance();
-
-      // Reset swap state after a delay
-      const timer = setTimeout(() => {
-        batchSwap.reset();
-      }, 3000);
-
-      return () => clearTimeout(timer);
     }
-  }, [batchSwap.currentStep, batchSwap.reset, refetchFromBalance, refetchToBalance]);
+  }, [batchSwap.currentStep, refetchFromBalance, refetchToBalance]);
 
 
 
@@ -462,21 +448,10 @@ const EnhancedSwapCard = () => {
     try {
       // Execute batch swap (approval + swap in single user action)
       await batchSwap.executeBatchSwap();
-
-      // Success! Modal will show complete state
-      setTimeout(() => {
-        batchSwap.reset();
-        // Clear form
-        setFromValue("");
-        setToValue("");
-        setQuoteData(null);
-        // Refresh balances
-        refetchFromBalance();
-        refetchToBalance();
-      }, 3000);
+      // Success! Inline display will show complete state with "Done" button
     } catch (error: any) {
       console.error('Batch swap failed:', error);
-      // Error is shown in BatchProgressModal
+      // Error is shown inline
     }
   };
 
@@ -620,21 +595,161 @@ const EnhancedSwapCard = () => {
           )}
 
 
-          {/* Swap Action Button */}
-          <Button
-            variant="swap"
-            size="xl"
-            className="w-full mt-5 liquid-metal-cursor"
-            onMouseMove={handleMouseMove}
-            onClick={handleSwap}
-            disabled={isButtonDisabled}
-            style={{
-              '--mouse-x': `${mousePos.x}%`,
-              '--mouse-y': `${mousePos.y}%`,
-            } as React.CSSProperties}
-          >
-            {getButtonText()}
-          </Button>
+          {/* Swap Action Button - Only show when not in success/error state */}
+          {batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error' && (
+            <Button
+              variant="swap"
+              size="xl"
+              className="w-full mt-5 liquid-metal-cursor"
+              onMouseMove={handleMouseMove}
+              onClick={handleSwap}
+              disabled={isButtonDisabled}
+              style={{
+                '--mouse-x': `${mousePos.x}%`,
+                '--mouse-y': `${mousePos.y}%`,
+              } as React.CSSProperties}
+            >
+              {getButtonText()}
+            </Button>
+          )}
+
+          {/* Transaction Progress Status - Inline Display */}
+          {batchSwap.currentStep !== 'idle' && batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error' && (
+            <div className="mt-4 p-4 rounded-xl bg-primary/10 border border-primary/20">
+              <div className="space-y-3">
+                {batchSwap.steps.map((step, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      {step.status === 'complete' && (
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      )}
+                      {step.status === 'active' && (
+                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                      )}
+                      {step.status === 'pending' && (
+                        <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                      )}
+                      {step.status === 'error' && (
+                        <XCircle className="w-5 h-5 text-destructive" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${
+                        step.status === 'active' ? 'text-primary' :
+                        step.status === 'complete' ? 'text-green-500' :
+                        step.status === 'error' ? 'text-destructive' :
+                        'text-muted-foreground'
+                      }`}>
+                        {step.label}
+                      </p>
+                      {step.hash && step.status === 'active' && (
+                        <p className="text-xs text-muted-foreground mt-1 font-mono">
+                          {step.hash.slice(0, 10)}...{step.hash.slice(-8)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {batchSwap.steps.some(s => s.status === 'active') && (
+                <p className="text-xs text-primary/70 mt-3 text-center">
+                  Please confirm the transaction in your wallet
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Transaction Success Display */}
+          {batchSwap.currentStep === 'success' && (
+            <div className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+              <div className="flex items-start gap-3 mb-3">
+                <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-green-500 mb-1">Swap Successful!</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your swap has been completed successfully
+                  </p>
+                </div>
+              </div>
+
+              {/* Transaction Hashes */}
+              {batchSwap.steps.filter(s => s.hash).length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground font-semibold">Transaction Hash:</p>
+                  {batchSwap.steps.filter(s => s.hash).map((step, index) => (
+                    <div key={index} className="p-2 rounded-lg bg-secondary/30 border border-border/50">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`https://explorer.testnet.riselabs.xyz/tx/${step.hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-primary hover:underline flex-1 truncate"
+                          title={step.hash}
+                        >
+                          {step.hash}
+                        </a>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(step.hash || '');
+                            toast({ title: "Copied!", description: "Transaction hash copied to clipboard" });
+                          }}
+                          className="text-xs text-primary hover:text-primary/80 flex-shrink-0"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                onClick={() => {
+                  batchSwap.reset();
+                  setFromValue("");
+                  setToValue("");
+                  setQuoteData(null);
+                  setRouteInfo("");
+                }}
+                className="w-full mt-3"
+                variant="default"
+              >
+                Done
+              </Button>
+            </div>
+          )}
+
+          {/* Transaction Error Display */}
+          {batchSwap.currentStep === 'error' && (
+            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
+              <div className="flex items-start gap-3 mb-3">
+                <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-destructive mb-1">Transaction Failed</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {batchSwap.error?.message || 'An error occurred while processing your transaction'}
+                  </p>
+                  {batchSwap.steps.find(s => s.hash) && (
+                    <div className="mt-2">
+                      <p className="text-xs text-muted-foreground mb-1">Transaction Hash</p>
+                      <p className="text-xs font-mono text-muted-foreground break-all">
+                        {batchSwap.steps.find(s => s.hash)?.hash}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Button
+                onClick={() => {
+                  batchSwap.reset();
+                }}
+                className="w-full"
+                variant="destructive"
+              >
+                Try Again
+              </Button>
+            </div>
+          )}
 
           {/* c-smaller-better indicator */}
           {quoteData && 'cSmallerBetterDemonstrated' in quoteData && quoteData.cSmallerBetterDemonstrated && (
@@ -652,15 +767,6 @@ const EnhancedSwapCard = () => {
         onClose={() => setModalOpen(false)}
         onSelect={handleTokenSelect}
         excludeToken={selectingFor === "from" ? toToken.symbol : fromToken.symbol}
-      />
-
-      {/* Batch Progress Modal */}
-      <BatchProgressModal
-        isOpen={batchSwap.currentStep !== 'idle'}
-        onClose={batchSwap.reset}
-        title="Executing Swap"
-        steps={batchSwap.steps}
-        canClose={batchSwap.currentStep === 'success' || batchSwap.currentStep === 'error'}
       />
     </>
   );

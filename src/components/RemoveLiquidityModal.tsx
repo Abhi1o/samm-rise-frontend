@@ -92,6 +92,8 @@ const RemoveLiquidityModal = ({ isOpen, onClose, position }: RemoveLiquidityModa
         amountBMin: calculatedAmounts.token1Min,
         token0Symbol: position.token0Symbol,
         token1Symbol: position.token1Symbol,
+        token0Decimals: token0.decimals,
+        token1Decimals: token1.decimals,
       });
 
       // Reset and close on success

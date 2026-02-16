@@ -36,15 +36,9 @@ export class BlockchainSyncService {
         return null;
       }
 
-      // Determine transaction type based on the 'to' address
-      const routerAddress = getCrossPoolRouter(chainId);
-
-      if (transaction.to?.toLowerCase() !== routerAddress.toLowerCase()) {
-        console.log('[BlockchainSync] Transaction is not a router transaction');
-        return null;
-      }
-
       // Parse transaction to determine type and details
+      // Note: Transactions can go to router (swaps) or pool contracts (add/remove liquidity)
+      // The parseTransaction method will determine if it's a relevant transaction
       const storedTx = await this.parseTransaction(
         transaction,
         receipt,
@@ -88,33 +82,70 @@ export class BlockchainSyncService {
         return log.data && log.data !== '0x' && log.address;
       });
 
-      // Determine transaction type based on number of transfers and function signature
+      // Determine transaction type based on transfers, function selector, and contract
       let txType: 'swap' | 'add_liquidity' | 'remove_liquidity' = 'swap';
 
-      // Decode function selector from input data
+      // Get function selector from input data
       const functionSelector = transaction.input?.slice(0, 10);
+      console.log('[BlockchainSync] Function selector:', functionSelector);
 
-      // Common function selectors (you may need to adjust these based on your contract)
-      // swapExactOutput: 0x... (already in use)
-      // addLiquidity: check for add/deposit patterns
-      // removeLiquidity: check for remove/withdraw patterns
+      // Function selectors for SAMM contracts
+      const ADD_LIQUIDITY_SELECTOR = '0xd3487997'; // addLiquidity function
+      const REMOVE_LIQUIDITY_SELECTOR = '0xbaa2abde'; // removeLiquidity function
+      const SWAP_SELECTOR = '0x07ed6b09'; // swapExactOutput function
 
-      if (transferEvents.length >= 2) {
+      // First, try to detect based on function selector
+      if (functionSelector === ADD_LIQUIDITY_SELECTOR || functionSelector?.startsWith('0xd348')) {
+        txType = 'add_liquidity';
+      } else if (functionSelector === REMOVE_LIQUIDITY_SELECTOR || functionSelector?.startsWith('0xbaa2')) {
+        txType = 'remove_liquidity';
+      } else if (functionSelector === SWAP_SELECTOR || functionSelector?.startsWith('0x07ed')) {
+        txType = 'swap';
+      } else if (transferEvents.length >= 2) {
+        // Fallback: Analyze transfer patterns
         const uniqueTokens = new Set(transferEvents.map((e: any) => e.address.toLowerCase()));
 
-        // If we see the same token pair being transferred in both directions, likely liquidity operation
-        if (uniqueTokens.size === 2 && transferEvents.length >= 2) {
-          // Check if transfers are bidirectional (both to and from user)
-          const toUser = transferEvents.filter((e: any) => e.topics && e.topics[2]?.toLowerCase().includes(userAddress.slice(2).toLowerCase()));
-          const fromUser = transferEvents.filter((e: any) => e.topics && e.topics[1]?.toLowerCase().includes(userAddress.slice(2).toLowerCase()));
+        // Add liquidity: User sends tokens TO pool (no LP tokens back in same tx usually)
+        // Remove liquidity: User receives tokens FROM pool
+        // Swap: User sends one token, receives another
 
-          if (toUser.length > 0 && fromUser.length > 0) {
-            // Both to and from user - likely liquidity operation
-            // If more going to user, it's remove; if more from user, it's add
-            txType = toUser.length > fromUser.length ? 'remove_liquidity' : 'add_liquidity';
+        if (uniqueTokens.size >= 2) {
+          // Count transfers from user (user is sender)
+          const fromUser = transferEvents.filter((e: any) => {
+            // In Transfer events, topics[1] is the 'from' address (padded to 32 bytes)
+            const from = e.topics && e.topics[1] ? '0x' + e.topics[1].slice(-40) : '';
+            return from.toLowerCase() === userAddress.toLowerCase();
+          });
+
+          // Count transfers to user (user is receiver)
+          const toUser = transferEvents.filter((e: any) => {
+            // topics[2] is the 'to' address
+            const to = e.topics && e.topics[2] ? '0x' + e.topics[2].slice(-40) : '';
+            return to.toLowerCase() === userAddress.toLowerCase();
+          });
+
+          console.log('[BlockchainSync] Transfer analysis:', {
+            fromUser: fromUser.length,
+            toUser: toUser.length,
+            uniqueTokens: uniqueTokens.size
+          });
+
+          // If user is mostly sending tokens (2+ different tokens) = add liquidity
+          if (fromUser.length >= 2 && toUser.length <= 1) {
+            txType = 'add_liquidity';
+          }
+          // If user is mostly receiving tokens (2+ different tokens) = remove liquidity
+          else if (toUser.length >= 2 && fromUser.length <= 1) {
+            txType = 'remove_liquidity';
+          }
+          // If balanced transfers (1 out, 1 in different token) = swap
+          else if (fromUser.length === 1 && toUser.length === 1) {
+            txType = 'swap';
           }
         }
       }
+
+      console.log('[BlockchainSync] Detected transaction type:', txType);
 
       // Parse based on transaction type
       if (txType === 'swap') {
@@ -190,6 +221,9 @@ export class BlockchainSyncService {
             amount1 = formatUnits(amount, token1Info.decimals);
           }
 
+          // Pool name for display
+          const pool = `${token0}-${token1}`;
+
           const storedTx: StoredTransaction = {
             id: `synced_${transaction.hash}`,
             hash: transaction.hash,
@@ -199,6 +233,7 @@ export class BlockchainSyncService {
             chainId,
             userAddress: userAddress.toLowerCase(),
             liquidityData: {
+              pool,
               token0,
               token1,
               amount0,
@@ -236,8 +271,7 @@ export class BlockchainSyncService {
    * Fetch transactions from block explorer API
    */
   private async fetchFromExplorer(
-    userAddress: Address,
-    chainId: number
+    userAddress: Address
   ): Promise<any[]> {
     try {
       // RiseChain explorer API (BlockScout-compatible)
@@ -336,18 +370,28 @@ export class BlockchainSyncService {
       const syncedTransactions: StoredTransaction[] = [];
 
       // Try explorer API first
-      const explorerTxs = await this.fetchFromExplorer(userAddress, chainId);
+      const explorerTxs = await this.fetchFromExplorer(userAddress);
 
       let txHashes: Address[] = [];
 
       if (explorerTxs.length > 0) {
-        // Filter for router transactions
+        // Filter for ALL contract interactions (router + pools)
+        // We'll filter by analyzing the transaction logs later
         txHashes = explorerTxs
-          .filter((tx: any) => tx.to?.toLowerCase() === routerAddress.toLowerCase())
-          .map((tx: any) => tx.hash as Address)
-          .slice(0, 50); // Limit to last 50 transactions
+          .filter((tx: any) => {
+            // Include router transactions
+            if (tx.to?.toLowerCase() === routerAddress.toLowerCase()) return true;
 
-        console.log('[BlockchainSync] Found router transactions from explorer:', txHashes.length);
+            // Include transactions that have token transfers (likely pool interactions)
+            // These will be parsed later to determine if they're add/remove liquidity
+            if (tx.input && tx.input !== '0x' && tx.input.length > 10) return true;
+
+            return false;
+          })
+          .map((tx: any) => tx.hash as Address)
+          .slice(0, 100); // Increase limit to catch more transactions
+
+        console.log('[BlockchainSync] Found contract transactions from explorer:', txHashes.length);
       } else {
         // Fallback to block scanning
         const currentBlock = toBlock || (await publicClient.getBlockNumber());

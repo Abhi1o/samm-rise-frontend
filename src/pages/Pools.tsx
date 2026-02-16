@@ -29,16 +29,6 @@ const TOKEN_ICONS: Record<string, string> = {
   LINK: "⬡",
 };
 
-// Pool ABI for fetching detailed data
-const POOL_ABI = [
-  'function getReserves() view returns (uint256 _reserveA, uint256 _reserveB)',
-  'function tokenA() view returns (address)',
-  'function tokenB() view returns (address)',
-  'function totalSupply() view returns (uint256)',
-  'function sammParams() view returns (int256 beta1, uint256 rmin, uint256 rmax, uint256 c)',
-  'function feeParams() view returns (uint256 tradeFeeNumerator, uint256 tradeFeeDenominator, uint256 ownerFeeNumerator, uint256 ownerFeeDenominator)'
-];
-
 interface PoolDetails {
   reserves: { reserveA: string; reserveB: string };
   totalSupply: string;
@@ -50,7 +40,6 @@ interface PoolDetails {
 
 const Pools = () => {
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
-  const [positionStatus, setPositionStatus] = useState<"all" | "active" | "inactive" | "closed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [addLiquidityOpen, setAddLiquidityOpen] = useState(false);
   const [removeLiquidityOpen, setRemoveLiquidityOpen] = useState(false);
@@ -379,14 +368,30 @@ const Pools = () => {
 
             {/* Pools Table */}
             <div className="glass-card rounded-2xl border border-glass-border overflow-hidden ">
-              {/* Table Header */}
-              <div className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
-                <div className="col-span-3">ALL POOLS</div>
-                <div className="col-span-1">FEE TIER</div>
-                <div className="col-span-4">TVL ↓</div>
-                <div className="col-span-1">TYPE</div>
-                <div className="col-span-1"></div>
-              </div>
+              {/* Table Header - Different for All Pools vs My Positions */}
+              {activeTab === "all" ? (
+                <div className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
+                  <div className="col-span-3">ALL POOLS</div>
+                  <div className="col-span-1">FEE TIER</div>
+                  <div className="col-span-4">TVL ↓</div>
+                  <div className="col-span-1">TYPE</div>
+                  <div className="col-span-1"></div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                  <h3 className="text-sm font-semibold text-foreground">MY LIQUIDITY POSITIONS</h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchPositions()}
+                    disabled={positionsLoading}
+                    className="rounded-lg"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${positionsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+              )}
 
               {/* Table Body */}
               {activeTab === "all" ? (
@@ -593,35 +598,6 @@ const Pools = () => {
                 </>
               ) : (
                 <div>
-                  {/* Position Status Tabs with Refresh Button */}
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-                    <div className="flex items-center gap-6">
-                      {(["all", "active", "inactive", "closed"] as const).map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => setPositionStatus(status)}
-                          className={`text-sm font-medium transition-colors capitalize ${
-                            positionStatus === status
-                              ? "text-primary"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => refetchPositions()}
-                      disabled={positionsLoading}
-                      className="rounded-lg"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${positionsLoading ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
-                  </div>
-                  
                   {/* Loading State */}
                   {positionsLoading && (
                     <div className="flex items-center justify-center py-16">
@@ -742,7 +718,14 @@ const Pools = () => {
         </main>
         <Footer />
 
-        <AddLiquidityModal isOpen={addLiquidityOpen} onClose={() => setAddLiquidityOpen(false)} />
+        <AddLiquidityModal 
+          isOpen={addLiquidityOpen} 
+          onClose={() => {
+            setAddLiquidityOpen(false);
+            // Refetch positions after modal closes (in case liquidity was added)
+            refetchPositions();
+          }} 
+        />
         <RemoveLiquidityModal 
           isOpen={removeLiquidityOpen} 
           onClose={() => {
@@ -752,7 +735,14 @@ const Pools = () => {
           }} 
           position={selectedPosition}
         />
-        <CreatePoolModal isOpen={createPoolOpen} onClose={() => setCreatePoolOpen(false)} />
+        <CreatePoolModal 
+          isOpen={createPoolOpen} 
+          onClose={() => {
+            setCreatePoolOpen(false);
+            // Refetch pools after modal closes (in case a new pool was created)
+            refetch();
+          }} 
+        />
       </div>
     </>
   );
