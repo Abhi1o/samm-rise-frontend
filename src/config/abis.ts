@@ -263,7 +263,213 @@ export const SAMM_POOL_ABI = [
   },
 ] as const;
 
+export const SAMM_POOL_FACTORY_ABI = [
+  {
+    inputs: [
+      { internalType: 'address', name: 'tokenA', type: 'address' },
+      { internalType: 'address', name: 'tokenB', type: 'address' },
+      {
+        components: [
+          { internalType: 'int256', name: 'beta1', type: 'int256' },
+          { internalType: 'uint256', name: 'rmin', type: 'uint256' },
+          { internalType: 'uint256', name: 'rmax', type: 'uint256' },
+          { internalType: 'uint256', name: 'c', type: 'uint256' },
+        ],
+        internalType: 'struct ISAMMPoolFactory.SAMMParams',
+        name: 'sammParams',
+        type: 'tuple',
+      },
+      {
+        components: [
+          { internalType: 'uint256', name: 'tradeFeeNumerator', type: 'uint256' },
+          { internalType: 'uint256', name: 'tradeFeeDenominator', type: 'uint256' },
+          { internalType: 'uint256', name: 'ownerFeeNumerator', type: 'uint256' },
+          { internalType: 'uint256', name: 'ownerFeeDenominator', type: 'uint256' },
+        ],
+        internalType: 'struct ISAMMPoolFactory.FeeParams',
+        name: 'feeParams',
+        type: 'tuple',
+      },
+    ],
+    name: 'createShard',
+    outputs: [{ internalType: 'address', name: 'shard', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'tokenA', type: 'address' },
+      { internalType: 'address', name: 'tokenB', type: 'address' },
+    ],
+    name: 'createShardDefault',
+    outputs: [{ internalType: 'address', name: 'shard', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'shard', type: 'address' },
+      { internalType: 'uint256', name: 'amountA', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountB', type: 'uint256' },
+    ],
+    name: 'initializeShard',
+    outputs: [{ internalType: 'uint256', name: 'lpTokens', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'tokenA', type: 'address' },
+      { internalType: 'address', name: 'tokenB', type: 'address' },
+    ],
+    name: 'getShardsForPair',
+    outputs: [{ internalType: 'address[]', name: 'shards', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'shard', type: 'address' }],
+    name: 'getShardInfo',
+    outputs: [
+      {
+        components: [
+          { internalType: 'address', name: 'tokenA', type: 'address' },
+          { internalType: 'address', name: 'tokenB', type: 'address' },
+          { internalType: 'uint256', name: 'shardIndex', type: 'uint256' },
+          {
+            components: [
+              { internalType: 'int256', name: 'beta1', type: 'int256' },
+              { internalType: 'uint256', name: 'rmin', type: 'uint256' },
+              { internalType: 'uint256', name: 'rmax', type: 'uint256' },
+              { internalType: 'uint256', name: 'c', type: 'uint256' },
+            ],
+            internalType: 'struct ISAMMPoolFactory.SAMMParams',
+            name: 'sammParams',
+            type: 'tuple',
+          },
+          {
+            components: [
+              { internalType: 'uint256', name: 'tradeFeeNumerator', type: 'uint256' },
+              { internalType: 'uint256', name: 'tradeFeeDenominator', type: 'uint256' },
+              { internalType: 'uint256', name: 'ownerFeeNumerator', type: 'uint256' },
+              { internalType: 'uint256', name: 'ownerFeeDenominator', type: 'uint256' },
+            ],
+            internalType: 'struct ISAMMPoolFactory.FeeParams',
+            name: 'feeParams',
+            type: 'tuple',
+          },
+          { internalType: 'bool', name: 'isActive', type: 'bool' },
+          { internalType: 'address', name: 'creator', type: 'address' },
+          { internalType: 'uint256', name: 'createdAt', type: 'uint256' },
+        ],
+        internalType: 'struct ISAMMPoolFactory.ShardInfo',
+        name: 'info',
+        type: 'tuple',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getAllShards',
+    outputs: [{ internalType: 'address[]', name: 'shards', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'tokenA', type: 'address' },
+      { internalType: 'address', name: 'tokenB', type: 'address' },
+    ],
+    name: 'getShardCount',
+    outputs: [{ internalType: 'uint256', name: 'count', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'BETA1_DEFAULT',
+    outputs: [{ internalType: 'int256', name: '', type: 'int256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'RMIN_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'RMAX_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'C_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'TRADE_FEE_NUMERATOR_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'TRADE_FEE_DENOMINATOR_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'OWNER_FEE_NUMERATOR_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'OWNER_FEE_DENOMINATOR_DEFAULT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'address', name: 'shard', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'tokenA', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'tokenB', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'shardIndex', type: 'uint256' },
+      { indexed: false, internalType: 'address', name: 'creator', type: 'address' },
+    ],
+    name: 'ShardCreated',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'address', name: 'shard', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amountA', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'amountB', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'lpTokens', type: 'uint256' },
+    ],
+    name: 'ShardInitialized',
+    type: 'event',
+  },
+] as const;
+
 // Export individual ABIs with proper names
 export const SAMMPoolABI = SAMM_POOL_ABI;
 export const CrossPoolRouterABI = CROSS_POOL_ROUTER_ABI;
 export const TokenFaucetABI = TOKEN_FAUCET_ABI;
+export const SAMMPoolFactoryABI = SAMM_POOL_FACTORY_ABI;

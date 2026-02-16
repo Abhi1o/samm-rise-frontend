@@ -37,7 +37,7 @@ const Header = () => {
                 <img className="w-8 h-8 text-white" src="/assets/image/saam_logo.png" alt="SAMM Logo" />
               </div>
               <span className="font-bold text-xl tracking-tight">
-                <span className="font-bold text-xl tracking-tight">SAAM </span>
+                <span className="font-bold text-xl tracking-tight">SAMM </span>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-orange-light">DEX</span>
               </span>
             </Link>

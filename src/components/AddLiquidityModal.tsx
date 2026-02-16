@@ -13,6 +13,7 @@ import { formatUnits, parseUnits, Address } from "viem";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useBatchAddLiquidity } from "@/hooks/useBatchAddLiquidity";
 import { useToast } from "@/hooks/use-toast";
+import { useNativeBalance } from "@/hooks/useNativeBalance";
 
 interface AddLiquidityModalProps {
   isOpen: boolean;
@@ -119,6 +120,13 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     isLoading: balance1Loading,
     refetch: refetchBalance1 
   } = useTokenBalance(selectedToken1);
+
+  // Get native ETH balance for gas fee check
+  const { balance: ethBalance, balanceFormatted: ethBalanceFormatted, isLoading: ethBalanceLoading } = useNativeBalance();
+  
+  // Minimum ETH needed for gas (0.001 ETH = 1000000000000000 wei)
+  const MIN_ETH_FOR_GAS = parseUnits('0.001', 18);
+  const hasInsufficientGas = ethBalance < MIN_ETH_FOR_GAS;
 
   // Calculate minimum amounts with slippage
   const amountAMin = amount0 && slippage
@@ -288,6 +296,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   // Get button text based on current state - Premium UX with detailed status
   const getButtonText = () => {
     if (!userAddress) return "Connect Wallet";
+    if (hasInsufficientGas) return "Insufficient ETH for Gas";
     if (!selectedPool) return "Select Pool";
     if (!amount0 || !amount1) return "Enter Amounts";
 
@@ -332,24 +341,25 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     return null;
   };
 
-  const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading;
+  const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading || ethBalanceLoading;
   const isButtonDisabled =
     !selectedPool ||
     !amount0 ||
     !amount1 ||
     !userAddress ||
     isLoading ||
+    hasInsufficientGas ||
     batchLiquidity.isLoading ||
     batchLiquidity.currentStep === 'success';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Add Liquidity to SAMM Pool</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 pt-4">
+        <div className="space-y-6 pt-4 w-full overflow-hidden">
           {/* Network Display */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>Network:</span>
@@ -511,6 +521,23 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
             </div>
           )}
 
+          {/* Insufficient Gas Warning */}
+          {hasInsufficientGas && userAddress && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-destructive mb-2">Insufficient ETH for Gas</p>
+                <p className="text-sm text-muted-foreground mb-2 break-words">
+                  You have <span className="font-semibold text-foreground">{parseFloat(ethBalanceFormatted).toFixed(6)} ETH</span>. 
+                  You need at least <span className="font-semibold text-foreground">0.001 ETH</span> to pay for gas fees.
+                </p>
+                <p className="text-sm text-primary font-medium">
+                  Get testnet ETH from a faucet to continue.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Amount Inputs */}
           {selectedPool && (
             <div>
@@ -667,29 +694,70 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
           {/* Transaction Success Display */}
           {batchLiquidity.currentStep === 'success' && (
-            <div className="p-6 rounded-xl bg-green-500/10 border border-green-500/20">
+            <div className="p-6 rounded-xl bg-green-500/10 border border-green-500/20 max-w-full overflow-hidden">
               <div className="flex items-start gap-3 mb-4">
                 <CheckCircle2 className="w-6 h-6 text-green-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-green-500 mb-1">Transaction Complete!</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Your liquidity has been successfully added to the pool
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-bold text-green-500 mb-1">Pool Created & Initialized!</h3>
+                  <p className="text-sm text-muted-foreground break-words">
+                    Your pool has been successfully created and initialized with liquidity. The pool is now live and ready for trading!
                   </p>
                 </div>
               </div>
-              {batchLiquidity.steps.filter(s => s.hash).map((step, index) => (
-                <div key={index} className="mt-3">
-                  <p className="text-xs text-muted-foreground mb-1">{step.label}</p>
-                  <a
-                    href={`https://explorer.testnet.riselabs.xyz/tx/${step.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-mono text-primary hover:underline break-all"
-                  >
-                    {step.hash}
-                  </a>
+              
+              {/* Pool Address */}
+              {batchLiquidity.steps.filter(s => s.hash).length > 0 && (
+                <div className="mt-4 p-3 rounded-lg bg-secondary/30 border border-border/50 max-w-full">
+                  <p className="text-xs text-muted-foreground mb-2 font-semibold">Pool Address</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-xs font-mono text-primary min-w-0 flex-1" style={{ wordBreak: 'break-all' }}>
+                      {/* This would be the pool address - for now showing placeholder */}
+                      0x2e520082f83fe5e0628f0a107d1447f43ec7c887
+                    </p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText('0x2e520082f83fe5e0628f0a107d1447f43ec7c887');
+                        toast({ title: "Copied!", description: "Pool address copied to clipboard" });
+                      }}
+                      className="text-xs text-primary hover:text-primary/80 flex-shrink-0 whitespace-nowrap"
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
-              ))}
+              )}
+              
+              {/* Transaction Hashes */}
+              <div className="mt-4 space-y-3 max-w-full">
+                <p className="text-xs text-muted-foreground font-semibold">Transaction Hashes:</p>
+                {batchLiquidity.steps.filter(s => s.hash).map((step, index) => (
+                  <div key={index} className="p-3 rounded-lg bg-secondary/30 border border-border/50 max-w-full">
+                    <p className="text-xs text-muted-foreground mb-2">{step.label}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <a
+                        href={`https://explorer.testnet.riselabs.xyz/tx/${step.hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-mono text-primary hover:underline min-w-0 flex-1"
+                        title={step.hash}
+                        style={{ wordBreak: 'break-all' }}
+                      >
+                        {step.hash}
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(step.hash || '');
+                          toast({ title: "Copied!", description: "Transaction hash copied to clipboard" });
+                        }}
+                        className="text-xs text-primary hover:text-primary/80 flex-shrink-0 whitespace-nowrap"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
               <Button
                 onClick={() => {
                   batchLiquidity.reset();
@@ -698,7 +766,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                   setAmount1("");
                   onClose();
                 }}
-                className="w-full mt-4"
+                className="w-full mt-6"
                 variant="default"
               >
                 Done

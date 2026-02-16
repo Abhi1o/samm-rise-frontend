@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Search, Plus, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Search, Plus, ExternalLink, Loader2, RefreshCw, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
@@ -11,10 +11,11 @@ import CreatePoolModal from "@/components/CreatePoolModal";
 import { usePoolData } from "@/hooks/usePoolData";
 import { useUserPositions, UserPosition } from "@/hooks/useUserPositions";
 import { useNetwork } from "@/contexts/NetworkContext";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import TokenLogo from "@/components/TokenLogo";
 import { getTokensForChain } from "@/config/tokens";
 import { formatUnits } from "viem";
+import { useToast } from "@/hooks/use-toast";
 
 const TOKEN_ICONS: Record<string, string> = {
   ETH: "⟠",
@@ -28,6 +29,25 @@ const TOKEN_ICONS: Record<string, string> = {
   LINK: "⬡",
 };
 
+// Pool ABI for fetching detailed data
+const POOL_ABI = [
+  'function getReserves() view returns (uint256 _reserveA, uint256 _reserveB)',
+  'function tokenA() view returns (address)',
+  'function tokenB() view returns (address)',
+  'function totalSupply() view returns (uint256)',
+  'function sammParams() view returns (int256 beta1, uint256 rmin, uint256 rmax, uint256 c)',
+  'function feeParams() view returns (uint256 tradeFeeNumerator, uint256 tradeFeeDenominator, uint256 ownerFeeNumerator, uint256 ownerFeeDenominator)'
+];
+
+interface PoolDetails {
+  reserves: { reserveA: string; reserveB: string };
+  totalSupply: string;
+  sammParams: { beta1: string; rmin: string; rmax: string; c: string };
+  feeParams: { tradeFeePercent: string; ownerFeePercent: string };
+  loading: boolean;
+  error?: string;
+}
+
 const Pools = () => {
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
   const [positionStatus, setPositionStatus] = useState<"all" | "active" | "inactive" | "closed">("all");
@@ -36,6 +56,11 @@ const Pools = () => {
   const [removeLiquidityOpen, setRemoveLiquidityOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<UserPosition | null>(null);
   const [createPoolOpen, setCreatePoolOpen] = useState(false);
+  const [expandedPoolId, setExpandedPoolId] = useState<number | null>(null);
+  const [poolDetails, setPoolDetails] = useState<Record<number, PoolDetails>>({});
+
+  const { toast } = useToast();
+  const publicClient = usePublicClient();
 
   // Get current network from context
   const { selectedNetwork: currentNetwork } = useNetwork();
@@ -60,6 +85,181 @@ const Pools = () => {
   const getTokenIcon = (symbol: string) => {
     const token = networkTokens.find(t => t.symbol === symbol);
     return token?.icon || TOKEN_ICONS[symbol] || "🪙";
+  };
+
+  // Fetch detailed pool data from blockchain
+  const fetchPoolDetails = async (poolId: number, poolAddress: string, token0Symbol: string, token1Symbol: string) => {
+    if (poolDetails[poolId] && !poolDetails[poolId].error) {
+      return; // Already fetched
+    }
+
+    if (!publicClient) {
+      console.error('Public client not available');
+      return;
+    }
+
+    setPoolDetails(prev => ({
+      ...prev,
+      [poolId]: { ...prev[poolId], loading: true }
+    }));
+
+    try {
+      const poolAbi = [
+        {
+          name: 'getReserves',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [
+            { name: '_reserveA', type: 'uint256' },
+            { name: '_reserveB', type: 'uint256' }
+          ]
+        },
+        {
+          name: 'totalSupply',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [{ name: '', type: 'uint256' }]
+        },
+        {
+          name: 'sammParams',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [
+            { name: 'beta1', type: 'int256' },
+            { name: 'rmin', type: 'uint256' },
+            { name: 'rmax', type: 'uint256' },
+            { name: 'c', type: 'uint256' }
+          ]
+        },
+        {
+          name: 'feeParams',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [],
+          outputs: [
+            { name: 'tradeFeeNumerator', type: 'uint256' },
+            { name: 'tradeFeeDenominator', type: 'uint256' },
+            { name: 'ownerFeeNumerator', type: 'uint256' },
+            { name: 'ownerFeeDenominator', type: 'uint256' }
+          ]
+        }
+      ] as const;
+
+      // Fetch reserves and totalSupply (these should always work)
+      // @ts-ignore - viem type issue
+      const reserves = await publicClient.readContract({
+        address: poolAddress as `0x${string}`,
+        abi: poolAbi,
+        functionName: 'getReserves'
+      });
+
+      // @ts-ignore - viem type issue
+      const totalSupply = await publicClient.readContract({
+        address: poolAddress as `0x${string}`,
+        abi: poolAbi,
+        functionName: 'totalSupply'
+      });
+
+      // Try to fetch sammParams and feeParams, but don't fail if they don't exist
+      let sammParams = null;
+      let feeParams = null;
+
+      try {
+        // @ts-ignore - viem type issue
+        sammParams = await publicClient.readContract({
+          address: poolAddress as `0x${string}`,
+          abi: poolAbi,
+          functionName: 'sammParams'
+        });
+      } catch (err) {
+        console.warn('sammParams not available for this pool:', err);
+      }
+
+      try {
+        // @ts-ignore - viem type issue
+        feeParams = await publicClient.readContract({
+          address: poolAddress as `0x${string}`,
+          abi: poolAbi,
+          functionName: 'feeParams'
+        });
+      } catch (err) {
+        console.warn('feeParams not available for this pool:', err);
+      }
+
+      const token0 = networkTokens.find(t => t.symbol === token0Symbol);
+      const token1 = networkTokens.find(t => t.symbol === token1Symbol);
+
+      const reserveAFormatted = token0 ? parseFloat(formatUnits(reserves[0], token0.decimals)).toFixed(4) : '0';
+      const reserveBFormatted = token1 ? parseFloat(formatUnits(reserves[1], token1.decimals)).toFixed(4) : '0';
+      const totalSupplyFormatted = parseFloat(formatUnits(totalSupply, 18)).toFixed(4);
+
+      let tradeFeePercent = 'N/A';
+      let ownerFeePercent = 'N/A';
+      
+      if (feeParams) {
+        tradeFeePercent = ((Number(feeParams[0]) / Number(feeParams[1])) * 100).toFixed(2);
+        ownerFeePercent = ((Number(feeParams[2]) / Number(feeParams[3])) * 100).toFixed(2);
+      }
+
+      setPoolDetails(prev => ({
+        ...prev,
+        [poolId]: {
+          reserves: {
+            reserveA: reserveAFormatted,
+            reserveB: reserveBFormatted
+          },
+          totalSupply: totalSupplyFormatted,
+          sammParams: sammParams ? {
+            beta1: (Number(sammParams[0]) / 1e6).toFixed(6),
+            rmin: (Number(sammParams[1]) / 1e6).toFixed(6),
+            rmax: (Number(sammParams[2]) / 1e6).toFixed(6),
+            c: (Number(sammParams[3]) / 1e6).toFixed(6)
+          } : {
+            beta1: 'N/A',
+            rmin: 'N/A',
+            rmax: 'N/A',
+            c: 'N/A'
+          },
+          feeParams: {
+            tradeFeePercent: `${tradeFeePercent}%`,
+            ownerFeePercent: `${ownerFeePercent}%`
+          },
+          loading: false
+        }
+      }));
+    } catch (error: any) {
+      console.error('Error fetching pool details:', error);
+      setPoolDetails(prev => ({
+        ...prev,
+        [poolId]: {
+          ...prev[poolId],
+          loading: false,
+          error: error.message || 'Failed to fetch pool details'
+        }
+      }));
+    }
+  };
+
+  // Toggle expand row
+  const toggleExpand = async (poolId: number, poolAddress: string, token0: string, token1: string) => {
+    if (expandedPoolId === poolId) {
+      setExpandedPoolId(null);
+    } else {
+      setExpandedPoolId(poolId);
+      await fetchPoolDetails(poolId, poolAddress, token0, token1);
+    }
+  };
+
+  // Copy to clipboard helper
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied!",
+      description: `${label} copied to clipboard`
+    });
   };
 
   // Refetch pools when network changes
@@ -180,12 +380,10 @@ const Pools = () => {
             {/* Pools Table */}
             <div className="glass-card rounded-2xl border border-glass-border overflow-hidden ">
               {/* Table Header */}
-              <div className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
+              <div className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
                 <div className="col-span-3">ALL POOLS</div>
                 <div className="col-span-1">FEE TIER</div>
-                <div className="col-span-2">APR ↓</div>
-                <div className="col-span-2">TVL ↓</div>
-                <div className="col-span-2">VOLUME 24H ↓</div>
+                <div className="col-span-4">TVL ↓</div>
                 <div className="col-span-1">TYPE</div>
                 <div className="col-span-1"></div>
               </div>
@@ -224,50 +422,173 @@ const Pools = () => {
 
                   {/* Pools List */}
                   {!isLoading && !error && filteredPools.map((pool, index) => (
-                  <div
-                    key={pool.id}
-                    className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors items-center animate-fade-in"
-                    style={{ animationDelay: `${index * 0.05}s` }}
-                  >
-                    <div className="col-span-3 flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        <TokenLogo
-                          symbol={pool.token0}
-                          logoURI={pool.token0LogoURI}
-                          icon={pool.token0Icon}
-                          size="md"
-                          className="border-2 border-background"
-                        />
-                        <TokenLogo
-                          symbol={pool.token1}
-                          logoURI={pool.token1LogoURI}
-                          icon={pool.token1Icon}
-                          size="md"
-                          className="border-2 border-background"
-                        />
+                  <>
+                    <div
+                      key={pool.id}
+                      className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors items-center animate-fade-in cursor-pointer"
+                      style={{ animationDelay: `${index * 0.05}s` }}
+                      onClick={() => toggleExpand(pool.id, pool.address, pool.token0, pool.token1)}
+                    >
+                      <div className="col-span-3 flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpand(pool.id, pool.address, pool.token0, pool.token1);
+                          }}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {expandedPoolId === pool.id ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </button>
+                        <div className="flex -space-x-2">
+                          <TokenLogo
+                            symbol={pool.token0}
+                            logoURI={pool.token0LogoURI}
+                            icon={pool.token0Icon}
+                            size="md"
+                            className="border-2 border-background"
+                          />
+                          <TokenLogo
+                            symbol={pool.token1}
+                            logoURI={pool.token1LogoURI}
+                            icon={pool.token1Icon}
+                            size="md"
+                            className="border-2 border-background"
+                          />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{pool.token0} / {pool.token1}</p>
+                          <p className="text-xs text-muted-foreground">{pool.network}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold">{pool.token0} / {pool.token1}</p>
-                        <p className="text-xs text-muted-foreground">{pool.network}</p>
+                      <div className="col-span-1">
+                        <span className="px-2 py-1 rounded bg-secondary/50 text-xs">{pool.type} | {pool.feeTier}</span>
+                      </div>
+                      <div className="col-span-4">{pool.tvl}</div>
+                      <div className="col-span-1">
+                        <span className="px-2 py-1 rounded bg-secondary/30 text-xs">{pool.type}</span>
+                      </div>
+                      <div className="col-span-1">
+                        <button 
+                          className="p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`https://explorer.testnet.riselabs.xyz/address/${pool.address}`, '_blank');
+                          }}
+                        >
+                          <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                        </button>
                       </div>
                     </div>
-                    <div className="col-span-1">
-                      <span className="px-2 py-1 rounded bg-secondary/50 text-xs">{pool.type} | {pool.feeTier}</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-primary font-semibold">🔥 {pool.apr}</span>
-                    </div>
-                    <div className="col-span-2">{pool.tvl}</div>
-                    <div className="col-span-2">{pool.volume24h}</div>
-                    <div className="col-span-1">
-                      <span className="px-2 py-1 rounded bg-secondary/30 text-xs">{pool.type}</span>
-                    </div>
-                    <div className="col-span-1">
-                      <button className="p-2 hover:bg-secondary/50 rounded-lg transition-colors">
-                        <ExternalLink className="w-4 h-4 text-muted-foreground" />
-                      </button>
-                    </div>
-                  </div>
+
+                    {/* Expanded Row */}
+                    {expandedPoolId === pool.id && (
+                      <div className="border-b border-border/50 bg-muted/20 px-6 py-4">
+                        <div className="max-w-5xl">
+                          {poolDetails[pool.id]?.loading && (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+                              <span className="text-muted-foreground">Loading pool details...</span>
+                            </div>
+                          )}
+
+                          {poolDetails[pool.id]?.error && (
+                            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                              <p className="text-destructive text-sm">{poolDetails[pool.id].error}</p>
+                            </div>
+                          )}
+
+                          {poolDetails[pool.id] && !poolDetails[pool.id].loading && !poolDetails[pool.id].error && (
+                            <div className="space-y-4">
+                              {/* Pool Info Row */}
+                              <div className="text-sm">
+                                <span className="text-muted-foreground">Pool Address: </span>
+                                <span className="font-mono text-xs text-primary">{pool.address.slice(0, 6)}...{pool.address.slice(-4)}</span>
+                                <button
+                                  onClick={() => copyToClipboard(pool.address, 'Pool address')}
+                                  className="text-primary hover:text-primary/80 p-1 ml-1"
+                                >
+                                  <Copy className="w-3 h-3 inline" />
+                                </button>
+                                <button
+                                  onClick={() => window.open(`https://explorer.testnet.riselabs.xyz/address/${pool.address}`, '_blank')}
+                                  className="text-primary hover:text-primary/80 p-1"
+                                >
+                                  <ExternalLink className="w-3 h-3 inline" />
+                                </button>
+                              </div>
+
+                              {/* Reserves - Compact Grid */}
+                              <div className="grid grid-cols-3 gap-3 text-sm">
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">{pool.token0} Reserve</p>
+                                  <p className="font-semibold">{poolDetails[pool.id].reserves.reserveA}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">{pool.token1} Reserve</p>
+                                  <p className="font-semibold">{poolDetails[pool.id].reserves.reserveB}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">LP Token Supply</p>
+                                  <p className="font-semibold">{poolDetails[pool.id].totalSupply}</p>
+                                </div>
+                              </div>
+
+                              {/* Price Ratio */}
+                              <div className="text-sm">
+                                <span className="text-muted-foreground">Price: </span>
+                                <span className="font-semibold">
+                                  1 {pool.token0} = {(parseFloat(poolDetails[pool.id].reserves.reserveB) / parseFloat(poolDetails[pool.id].reserves.reserveA)).toFixed(6)} {pool.token1}
+                                </span>
+                              </div>
+
+                              {/* Only show SAMM params if available */}
+                              {poolDetails[pool.id].sammParams.beta1 !== 'N/A' && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-2">SAMM Parameters</p>
+                                  <div className="grid grid-cols-4 gap-2 text-xs">
+                                    <div>
+                                      <span className="text-muted-foreground">Beta1: </span>
+                                      <span className="font-mono">{poolDetails[pool.id].sammParams.beta1}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">R Min: </span>
+                                      <span className="font-mono">{poolDetails[pool.id].sammParams.rmin}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">R Max: </span>
+                                      <span className="font-mono">{poolDetails[pool.id].sammParams.rmax}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">C: </span>
+                                      <span className="font-mono">{poolDetails[pool.id].sammParams.c}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Only show fees if available */}
+                              {poolDetails[pool.id].feeParams.tradeFeePercent !== 'N/A%' && (
+                                <div className="flex items-center gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Trade Fee: </span>
+                                    <span className="font-semibold text-primary">{poolDetails[pool.id].feeParams.tradeFeePercent}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Owner Fee: </span>
+                                    <span className="font-semibold text-primary">{poolDetails[pool.id].feeParams.ownerFeePercent}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
                   ))}
                 </>
               ) : (

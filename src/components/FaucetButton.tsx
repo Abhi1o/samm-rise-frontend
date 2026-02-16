@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Droplet, Loader2, Clock, CheckCircle2 } from 'lucide-react';
 import { useFaucet } from '@/hooks/useFaucet';
+import { useFaucetTokens } from '@/hooks/useFaucetTokens';
 import { riseChain } from '@/config/chains';
 
 /**
@@ -35,6 +36,8 @@ export const FaucetButton = () => {
     isEnabled,
     formatTimeRemaining,
   } = useFaucet(address, chainId);
+
+  const { tokens, isLoading: isLoadingTokens } = useFaucetTokens();
 
   // Update countdown display
   useEffect(() => {
@@ -100,7 +103,16 @@ export const FaucetButton = () => {
     }
 
     if (canRequest) {
-      return 'Claim free test tokens for SAMM DEX testing (WETH, WBTC, USDC, USDT, DAI, LINK, UNI, AAVE)';
+      if (isLoadingTokens || tokens.length === 0) {
+        return 'Claim free test tokens for SAMM DEX testing';
+      }
+
+      // Show actual token amounts from contract
+      const tokenList = tokens
+        .map(t => `${t.amountPerRequest} ${t.symbol}`)
+        .join(', ');
+
+      return `Claim test tokens: ${tokenList}`;
     }
 
     return 'Loading...';

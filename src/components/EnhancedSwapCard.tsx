@@ -63,6 +63,10 @@ const EnhancedSwapCard = () => {
   // Get router address for approval
   const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
 
+  // Create ConfigToken objects for balance/price hooks (MUST be before useBatchSwap)
+  const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);
+  const toTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === toToken.address);
+
   // Batch swap hook - handles approval + swap in single user action
   const batchSwap = useBatchSwap({
     fromToken: fromTokenConfig,
@@ -75,10 +79,6 @@ const EnhancedSwapCard = () => {
     slippageBps: undefined, // Use default slippage from quote
     deadline: undefined, // Use default deadline
   });
-
-  // Create ConfigToken objects for balance/price hooks
-  const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);
-  const toTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === toToken.address);
 
   // Fetch balances for from and to tokens
   const {
