@@ -342,18 +342,25 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
         // topics[3] = tokenB address (third indexed param)
 
         let shardAddress: Address | null = null;
+        let canonicalTokenA: string | null = null;
 
         for (const log of logs) {
           // Check if this log is from the factory contract
           if (log.address?.toLowerCase() === factoryAddress?.toLowerCase()) {
-            // The shard address is in topics[1] for the ShardCreated event
-            if (log.topics && log.topics.length >= 2) {
+            // ShardCreated event: topics[0]=sig, topics[1]=shard, topics[2]=tokenA, topics[3]=tokenB
+            if (log.topics && log.topics.length >= 3) {
               // Extract address from topic (topics are 32 bytes, address is last 20 bytes)
               const addressHex = log.topics[1];
-              // Remove '0x' and get last 40 characters (20 bytes = 40 hex chars)
               const cleanAddress = addressHex.replace('0x', '');
               shardAddress = ('0x' + cleanAddress.slice(-40)) as Address;
+
+              // Extract canonical tokenA from topics[2]
+              const tokenAHex = log.topics[2];
+              const cleanTokenA = tokenAHex.replace('0x', '');
+              canonicalTokenA = '0x' + cleanTokenA.slice(-40);
+
               console.log('[useBatchCreatePool] Extracted shard address from topics:', shardAddress);
+              console.log('[useBatchCreatePool] Canonical tokenA:', canonicalTokenA);
               break;
             }
           }
@@ -372,11 +379,30 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
           if (params.amount0 && params.amount1 && params.token0 && params.token1) {
             setCurrentStep('initializing_shard');
 
-            const amountAWei = parseUnits(params.amount0, params.token0.decimals);
-            const amountBWei = parseUnits(params.amount1, params.token1.decimals);
+            // CRITICAL: The factory sorts tokens by address (lower = tokenA).
+            // We must pass amounts in canonical order, not UI order.
+            const isToken0Canonical =
+              canonicalTokenA?.toLowerCase() === params.token0.address.toLowerCase();
+
+            let amountAWei: bigint;
+            let amountBWei: bigint;
+
+            if (isToken0Canonical || !canonicalTokenA) {
+              // UI order matches factory's canonical order
+              amountAWei = parseUnits(params.amount0, params.token0.decimals);
+              amountBWei = parseUnits(params.amount1, params.token1.decimals);
+              console.log('[useBatchCreatePool] ✓ Token order matches canonical order');
+            } else {
+              // Factory reordered tokens — swap amounts to match canonical order
+              amountAWei = parseUnits(params.amount1, params.token1.decimals);
+              amountBWei = parseUnits(params.amount0, params.token0.decimals);
+              console.log('[useBatchCreatePool] ⚠️ Swapping amounts to match canonical token order');
+            }
 
             console.log('[useBatchCreatePool] Initializing shard:', {
               shardAddress,
+              canonicalTokenA,
+              isToken0Canonical: isToken0Canonical || !canonicalTokenA,
               amountA: amountAWei.toString(),
               amountB: amountBWei.toString(),
             });
