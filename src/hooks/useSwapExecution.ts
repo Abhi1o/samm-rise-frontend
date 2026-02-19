@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { Address, formatUnits } from 'viem';
+import { Address } from 'viem';
 import { CROSS_POOL_ROUTER_ABI } from '@/config/abis';
 import { getCrossPoolRouter } from '@/config/contracts';
 import { useToast } from '@/hooks/use-toast';
-import { DEFAULT_DEADLINE, DEFAULT_SLIPPAGE } from '@/utils/constants';
+import { DEFAULT_DEADLINE, DEFAULT_SLIPPAGE, GAS_LIMITS } from '@/utils/constants';
 import { transactionStorage } from '@/services/transactionStorage';
 import { getTokensForChain } from '@/config/tokens';
 
@@ -203,6 +203,7 @@ export function useSwapExecution(): UseSwapExecutionReturn {
             abi: CROSS_POOL_ROUTER_ABI,
             functionName: 'swapExactOutput',
             args: [swapParams],
+            gas: GAS_LIMITS.swap,
           });
 
           console.log('Swap contract call initiated, waiting for confirmation...');

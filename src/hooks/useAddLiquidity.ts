@@ -3,6 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { parseUnits, Address } from 'viem';
 import { useToast } from './use-toast';
 import { SAMMPoolABI } from '@/config/abis';
+import { GAS_LIMITS } from '@/utils/constants';
 import { transactionStorage } from '@/services/transactionStorage';
 import { getTokensForChain } from '@/config/tokens';
 
@@ -61,6 +62,7 @@ export function useAddLiquidity() {
         const amountBMinWei = parseUnits(params.amountBMin, params.decimalsB);
 
         // Call addLiquidity on the pool contract
+        // @ts-ignore - wagmi v2 type inference issue with complex ABIs
         writeContract({
           address: params.poolAddress,
           abi: SAMMPoolABI,
@@ -72,6 +74,7 @@ export function useAddLiquidity() {
             amountBMinWei,
             address, // recipient
           ],
+          gas: GAS_LIMITS.addLiquidity,
         });
 
         toast({

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Address } from 'viem';
-import { ERC20_ABI, MAX_UINT256 } from '@/utils/constants';
+import { ERC20_ABI, MAX_UINT256, GAS_LIMITS } from '@/utils/constants';
 import { useToast } from '@/hooks/use-toast';
 
 export type ApprovalState = 'idle' | 'checking' | 'approving' | 'approved' | 'error';
@@ -170,6 +170,7 @@ export function useTokenApproval({
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [spenderAddress, approvalAmount],
+          gas: GAS_LIMITS.approve,
         });
       } catch (error) {
         console.error('Approval error:', error);

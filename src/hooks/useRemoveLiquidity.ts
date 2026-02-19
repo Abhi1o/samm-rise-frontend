@@ -3,6 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { Address, parseAbi, formatUnits } from 'viem';
 import { useToast } from './use-toast';
 import { transactionStorage } from '@/services/transactionStorage';
+import { GAS_LIMITS } from '@/utils/constants';
 
 const POOL_ABI = parseAbi([
   'function removeLiquidity(uint256 liquidity, uint256 amountAMin, uint256 amountBMin, address to) returns (uint256 amountA, uint256 amountB)',
@@ -67,6 +68,7 @@ export function useRemoveLiquidity() {
             params.amountBMin,
             userAddress,
           ],
+          gas: GAS_LIMITS.removeLiquidity,
         });
 
         toast({

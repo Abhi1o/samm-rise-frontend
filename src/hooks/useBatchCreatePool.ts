@@ -4,6 +4,7 @@ import { Address, parseUnits } from 'viem';
 import { useTokenApproval } from './useTokenApproval';
 import { SAMMPoolFactoryABI } from '@/config/abis';
 import { getFactory } from '@/config/contracts';
+import { GAS_LIMITS } from '@/utils/constants';
 import { Token } from '@/types/tokens';
 import { useToast } from './use-toast';
 
@@ -279,6 +280,7 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
               abi: SAMMPoolFactoryABI,
               functionName: 'createShardDefault',
               args: [tokenA, tokenB],
+              gas: GAS_LIMITS.createShard,
             });
           } else {
             // Use custom parameters
@@ -292,6 +294,7 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
               abi: SAMMPoolFactoryABI,
               functionName: 'createShard',
               args: [tokenA, tokenB, params.sammParams, params.feeParams],
+              gas: GAS_LIMITS.createShard,
             });
           }
 
@@ -385,6 +388,7 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
               abi: SAMMPoolFactoryABI,
               functionName: 'initializeShard',
               args: [shardAddress, amountAWei, amountBWei],
+              gas: GAS_LIMITS.initializeShard,
             });
           } else {
             throw new Error('Missing amount parameters for initialization');

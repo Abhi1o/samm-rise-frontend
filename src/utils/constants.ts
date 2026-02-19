@@ -40,6 +40,21 @@ export const TOKEN_FAUCET_ADDRESS = '0x1758716f8ccb77B514d801eF00C690F6F5CFce84'
 export const SAMM_FACTORY_ADDRESS = '0x1114cF606d700bB8490C9D399500e35a31FaE27A';
 export const CROSS_POOL_ROUTER_ADDRESS = '0x622c2D2719197A047f29BCBaaaEBBDbD54b45a11';
 
+/**
+ * Explicit gas limits for RiseChain transactions.
+ * RiseChain's eth_estimateGas returns values that exceed the network's
+ * acceptable threshold, causing "gas limit too high" errors. Setting
+ * explicit gas bypasses estimation entirely.
+ */
+export const GAS_LIMITS = {
+  approve: 100_000n,           // ERC20 approve
+  swap: 600_000n,              // swapExactOutput (multi-hop)
+  addLiquidity: 400_000n,      // addLiquidity
+  removeLiquidity: 300_000n,   // removeLiquidity
+  createShard: 3_000_000n,     // createShard / createShardDefault (deploys contract)
+  initializeShard: 600_000n,   // initializeShard (transfers + storage)
+} as const;
+
 // ERC20 ABI for basic operations
 export const ERC20_ABI = [
   {
