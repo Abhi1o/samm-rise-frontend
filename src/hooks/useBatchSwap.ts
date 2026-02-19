@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAccount } from 'wagmi';
-import { Address } from 'viem';
+import { Address, parseUnits } from 'viem';
 import { useTokenApproval } from './useTokenApproval';
 import { useSwapExecution } from './useSwapExecution';
 import { BatchSwapStep, ProgressStep, UseBatchSwapReturn } from '@/types/batch';
@@ -31,6 +31,19 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   // Get router address for approvals
   const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
 
+  // Convert amountIn string to bigint for the allowance check.
+  // quoteData.amountIn is a formatted decimal (e.g. "11.255641").
+  // useTokenApproval approves MAX_UINT256 by default, so any positive
+  // amountNeeded triggers an approval when the current allowance is 0.
+  const amountNeeded = useMemo(() => {
+    if (!params.amountIn || !params.fromDecimals) return 0n;
+    try {
+      return parseUnits(params.amountIn, params.fromDecimals);
+    } catch {
+      return 0n;
+    }
+  }, [params.amountIn, params.fromDecimals]);
+
   // Token approval hook
   const {
     needsApproval,
@@ -40,8 +53,8 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   } = useTokenApproval({
     tokenAddress: params.fromToken?.address as Address,
     spenderAddress: routerAddress,
-    amount: params.amountIn,
-    decimals: params.fromDecimals,
+    amountNeeded,
+    enabled: !!params.fromToken && !!routerAddress && !!params.amountIn,
   });
 
   // Swap execution hook
