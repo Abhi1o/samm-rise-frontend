@@ -1,105 +1,65 @@
-import { useBalance, useReadContract, useAccount, useChainId } from 'wagmi';
+import { useReadContract } from 'wagmi';
 import { Address, formatUnits } from 'viem';
-import { Token } from '@/types/tokens';
-import { ERC20_ABI, NATIVE_TOKEN_ADDRESS } from '@/utils/constants';
-import { isNativeToken } from '@/config/tokens';
+import { ERC20_ABI } from '@/utils/constants';
+
+interface UseTokenBalanceParams {
+  tokenAddress: Address | undefined;
+  userAddress: Address | undefined;
+  enabled?: boolean;
+}
+
+interface UseTokenBalanceReturn {
+  balance: bigint;
+  formattedBalance: string;
+  isLoading: boolean;
+  error: Error | undefined;
+  refetch: () => void;
+}
 
 /**
- * Hook to fetch token balance for the connected wallet
+ * Hook to fetch and watch ERC20 token balance for a user
+ * Auto-refetches on block changes
  */
-export function useTokenBalance(token?: Token) {
-  const { address: walletAddress } = useAccount();
-  const chainId = useChainId();
-
-  // Native token balance (ETH, MATIC, etc.)
+export function useTokenBalance({
+  tokenAddress,
+  userAddress,
+  enabled = true,
+}: UseTokenBalanceParams): UseTokenBalanceReturn {
   const {
-    data: nativeBalance,
-    isLoading: nativeLoading,
-    refetch: refetchNative,
-  } = useBalance({
-    address: walletAddress,
-    chainId: token?.chainId || chainId,
-    query: {
-      enabled: !!walletAddress && !!token && isNativeToken(token.address),
-      refetchInterval: 30000, // Refetch every 30 seconds
-    },
-  });
-
-  // ERC20 token balance
-  const {
-    data: erc20Balance,
-    isLoading: erc20Loading,
-    refetch: refetchERC20,
+    data: balance,
+    isLoading,
+    error,
+    refetch,
   } = useReadContract({
-    address: token?.address as Address,
+    address: tokenAddress,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: walletAddress ? [walletAddress] : undefined,
-    chainId: token?.chainId || chainId,
+    args: userAddress ? [userAddress] : undefined,
     query: {
-      enabled: !!walletAddress && !!token && !isNativeToken(token.address),
-      refetchInterval: 30000,
+      enabled: enabled && !!tokenAddress && !!userAddress,
+      refetchInterval: 10000, // Refetch every 10 seconds
     },
   });
 
-  const refetch = async () => {
-    if (!token) return;
-    if (isNativeToken(token.address)) {
-      await refetchNative();
-    } else {
-      await refetchERC20();
-    }
-  };
+  // Get token decimals for formatting
+  const { data: decimals } = useReadContract({
+    address: tokenAddress,
+    abi: ERC20_ABI,
+    functionName: 'decimals',
+    query: {
+      enabled: enabled && !!tokenAddress,
+    },
+  });
 
-  if (!token || !walletAddress) {
-    return {
-      balance: '0',
-      balanceFormatted: '0',
-      balanceBigInt: BigInt(0),
-      isLoading: false,
-      refetch,
-    };
-  }
-
-  const isNative = isNativeToken(token.address);
-  const isLoading = isNative ? nativeLoading : erc20Loading;
-
-  if (isNative && nativeBalance) {
-    // Format to max 6 decimal places for display
-    const formatted = parseFloat(nativeBalance.formatted).toFixed(6);
-    // Remove trailing zeros
-    const cleanFormatted = parseFloat(formatted).toString();
-    
-    return {
-      balance: nativeBalance.value.toString(),
-      balanceFormatted: cleanFormatted,
-      balanceBigInt: nativeBalance.value,
-      isLoading,
-      refetch,
-    };
-  }
-
-  if (!isNative && erc20Balance !== undefined) {
-    const rawFormatted = formatUnits(erc20Balance as bigint, token.decimals);
-    // Format to max 6 decimal places for display
-    const formatted = parseFloat(rawFormatted).toFixed(6);
-    // Remove trailing zeros
-    const cleanFormatted = parseFloat(formatted).toString();
-    
-    return {
-      balance: (erc20Balance as bigint).toString(),
-      balanceFormatted: cleanFormatted,
-      balanceBigInt: erc20Balance as bigint,
-      isLoading,
-      refetch,
-    };
-  }
+  const currentBalance = (balance as bigint) || 0n;
+  const tokenDecimals = (decimals as number) || 18;
+  const formattedBalance = formatUnits(currentBalance, tokenDecimals);
 
   return {
-    balance: '0',
-    balanceFormatted: '0',
-    balanceBigInt: BigInt(0),
+    balance: currentBalance,
+    formattedBalance,
     isLoading,
+    error: error as Error | undefined,
     refetch,
   };
 }

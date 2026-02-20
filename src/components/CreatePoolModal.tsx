@@ -9,7 +9,17 @@ import { getTokensForChain } from "@/config/tokens";
 import TokenLogo from "./TokenLogo";
 import { useToast } from "@/hooks/use-toast";
 import { useBatchCreatePool } from "@/hooks/useBatchCreatePool";
-import { useAccount } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
+import { useTokenBalance } from "@/hooks/useTokenBalance";
+import { useGasEstimation } from "@/hooks/useGasEstimation";
+import { useNetworkValidation } from "@/hooks/useNetworkValidation";
+import { usePoolExistence } from "@/hooks/usePoolExistence";
+import { ErrorModal } from "@/components/ErrorModal";
+import { PreTransactionChecklist, ChecklistItem } from "@/components/PreTransactionChecklist";
+import { parseUnits, parseEther } from "viem";
+import { Address } from "viem";
+import { getFactory } from "@/config/contracts";
+import { useNavigate } from "react-router-dom";
 
 interface CreatePoolModalProps {
   isOpen: boolean;
@@ -20,6 +30,7 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
   const { selectedNetwork } = useNetwork();
   const { toast } = useToast();
   const { address: userAddress } = useAccount();
+  const navigate = useNavigate();
 
   // Get tokens for current network
   const tokens = selectedNetwork ? getTokensForChain(selectedNetwork.chainId) : [];
@@ -55,6 +66,86 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
       setSelectedToken1(tokens[1]);
     }
   }, [selectedNetwork]);
+
+  // Token balances
+  const token0Balance = useTokenBalance({
+    tokenAddress: selectedToken0?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!selectedToken0 && !!userAddress,
+  });
+
+  const token1Balance = useTokenBalance({
+    tokenAddress: selectedToken1?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!selectedToken1 && !!userAddress,
+  });
+
+  // Gas estimation
+  const gasEstimation = useGasEstimation({ enabled: !!userAddress });
+
+  // ETH balance
+  const { data: ethBalance } = useBalance({
+    address: userAddress as Address,
+  });
+
+  // Network validation
+  const networkValidation = useNetworkValidation();
+
+  // Get factory address
+  const factoryAddress = selectedNetwork?.chainId ? getFactory(selectedNetwork.chainId) as Address : undefined;
+
+  // Pool existence check
+  const poolExistence = usePoolExistence({
+    token0Address: selectedToken0?.address as Address,
+    token1Address: selectedToken1?.address as Address,
+    factoryAddress,
+    enabled: !!selectedToken0 && !!selectedToken1 && !!factoryAddress,
+  });
+
+  // Check if ETH is insufficient for gas
+  const ethInsufficient = useMemo(() => {
+    if (!ethBalance || !gasEstimation.estimatedCostInEth) return false;
+    try {
+      const estimatedCost = parseEther(gasEstimation.estimatedCostInEth);
+      return ethBalance.value < estimatedCost;
+    } catch {
+      return false;
+    }
+  }, [ethBalance, gasEstimation.estimatedCostInEth]);
+
+  // Check if amounts exceed balances
+  const token0Insufficient = useMemo(() => {
+    if (!amount0 || !selectedToken0) return false;
+    try {
+      const amountWei = parseUnits(amount0, selectedToken0.decimals);
+      return amountWei > token0Balance.balance;
+    } catch {
+      return false;
+    }
+  }, [amount0, selectedToken0, token0Balance.balance]);
+
+  const token1Insufficient = useMemo(() => {
+    if (!amount1 || !selectedToken1) return false;
+    try {
+      const amountWei = parseUnits(amount1, selectedToken1.decimals);
+      return amountWei > token1Balance.balance;
+    } catch {
+      return false;
+    }
+  }, [amount1, selectedToken1, token1Balance.balance]);
+
+  // Max button handlers
+  const handleMaxToken0 = () => {
+    if (selectedToken0) {
+      setAmount0(token0Balance.formattedBalance);
+    }
+  };
+
+  const handleMaxToken1 = () => {
+    if (selectedToken1) {
+      setAmount1(token1Balance.formattedBalance);
+    }
+  };
 
   // Prepare SAMM and Fee params (only if not using defaults)
   const sammParams = useMemo(() => {
@@ -158,8 +249,106 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
     !userAddress ||
     !amount0 ||
     !amount1 ||
+    token0Insufficient ||
+    token1Insufficient ||
+    ethInsufficient ||
+    !networkValidation.isCorrectNetwork ||
+    poolExistence.poolExists ||
     batchCreatePool.isLoading ||
     batchCreatePool.currentStep === 'success';
+
+  // Build checklist items
+  const checklistItems: ChecklistItem[] = useMemo(() => {
+    if (!userAddress) return [];
+
+    const items: ChecklistItem[] = [];
+
+    // Network check
+    items.push({
+      id: 'network',
+      label: 'Connected to Rise Testnet',
+      passed: networkValidation.isCorrectNetwork,
+      loading: false,
+      details: networkValidation.isCorrectNetwork 
+        ? undefined 
+        : `Currently on chain ${networkValidation.currentChainId}`,
+      action: !networkValidation.isCorrectNetwork ? {
+        label: 'Switch',
+        onClick: networkValidation.switchToCorrectNetwork,
+      } : undefined,
+    });
+
+    // Token0 balance check
+    if (selectedToken0 && amount0) {
+      items.push({
+        id: 'token0-balance',
+        label: `Sufficient ${selectedToken0.symbol} balance`,
+        passed: !token0Insufficient,
+        loading: token0Balance.isLoading,
+        details: `${token0Balance.formattedBalance} available, ${amount0} needed`,
+        action: token0Insufficient ? {
+          label: 'Get Tokens',
+          onClick: () => navigate('/faucet'),
+        } : undefined,
+      });
+    }
+
+    // Token1 balance check
+    if (selectedToken1 && amount1) {
+      items.push({
+        id: 'token1-balance',
+        label: `Sufficient ${selectedToken1.symbol} balance`,
+        passed: !token1Insufficient,
+        loading: token1Balance.isLoading,
+        details: `${token1Balance.formattedBalance} available, ${amount1} needed`,
+        action: token1Insufficient ? {
+          label: 'Get Tokens',
+          onClick: () => navigate('/faucet'),
+        } : undefined,
+      });
+    }
+
+    // ETH balance check
+    items.push({
+      id: 'eth-balance',
+      label: 'Sufficient ETH for gas',
+      passed: !ethInsufficient,
+      loading: gasEstimation.isEstimating,
+      details: `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH needed`,
+      action: ethInsufficient ? {
+        label: 'Get ETH',
+        onClick: () => window.open('https://faucet.riselabs.xyz', '_blank'),
+      } : undefined,
+    });
+
+    // Pool existence check
+    if (selectedToken0 && selectedToken1) {
+      items.push({
+        id: 'pool-existence',
+        label: 'Pool does not exist yet',
+        passed: !poolExistence.poolExists,
+        loading: poolExistence.isChecking,
+        details: poolExistence.poolExists ? 'Pool already exists' : undefined,
+      });
+    }
+
+    return items;
+  }, [
+    userAddress,
+    networkValidation,
+    selectedToken0,
+    selectedToken1,
+    amount0,
+    amount1,
+    token0Insufficient,
+    token1Insufficient,
+    ethInsufficient,
+    token0Balance,
+    token1Balance,
+    gasEstimation,
+    poolExistence,
+    navigate,
+  ]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -176,6 +365,60 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
               {selectedNetwork?.displayName || "Not Connected"}
             </span>
           </div>
+
+          {/* Wrong Network Warning */}
+          {userAddress && !networkValidation.isCorrectNetwork && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-yellow-600 dark:text-yellow-400">Wrong Network</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Please switch to Rise Testnet to create pools
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={networkValidation.switchToCorrectNetwork}
+                disabled={networkValidation.isLoading}
+                className="flex-shrink-0"
+              >
+                {networkValidation.isLoading ? 'Switching...' : 'Switch Network'}
+              </Button>
+            </div>
+          )}
+
+          {/* Gas Estimation & ETH Warning */}
+          {userAddress && networkValidation.isCorrectNetwork && (
+            <div className="bg-secondary/20 rounded-xl p-3 border border-border/30">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Estimated Gas:</span>
+                <span className="font-semibold">
+                  {gasEstimation.isEstimating ? '...' : `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH`}
+                </span>
+              </div>
+              {ethInsufficient && (
+                <p className="text-xs text-destructive mt-2">
+                  Insufficient ETH for gas. You need at least {gasEstimation.estimatedCostInEth} ETH
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Pool Already Exists Warning */}
+          {poolExistence.poolExists && poolExistence.poolAddress && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-yellow-600 dark:text-yellow-400">Pool Already Exists</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  A pool for this token pair already exists
+                </p>
+                <p className="text-xs font-mono text-muted-foreground mt-1 break-all">
+                  {poolExistence.poolAddress}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Info Banner */}
           <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
@@ -281,8 +524,8 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             </div>
             
             {/* Token 0 Input */}
-            <div className="bg-secondary/30 rounded-xl p-4 mb-3 border border-border/50">
-              <div className="flex items-center justify-between">
+            <div className={`bg-secondary/30 rounded-xl p-4 mb-3 border ${token0Insufficient ? 'border-destructive' : 'border-border/50'}`}>
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
                   <TokenLogo
                     symbol={selectedToken0?.symbol || ""}
@@ -303,11 +546,31 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                   className="w-32 text-right text-xl font-semibold bg-transparent border-none focus-visible:ring-0"
                 />
               </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Balance: {token0Balance.isLoading ? '...' : token0Balance.formattedBalance} {selectedToken0?.symbol}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleMaxToken0}
+                  className="h-6 px-2 text-xs"
+                  disabled={!userAddress || token0Balance.isLoading}
+                >
+                  Max
+                </Button>
+              </div>
+              {token0Insufficient && (
+                <p className="text-xs text-destructive mt-1">
+                  Insufficient balance
+                </p>
+              )}
             </div>
 
             {/* Token 1 Input */}
-            <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-              <div className="flex items-center justify-between">
+            <div className={`bg-secondary/30 rounded-xl p-4 border ${token1Insufficient ? 'border-destructive' : 'border-border/50'}`}>
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
                   <TokenLogo
                     symbol={selectedToken1?.symbol || ""}
@@ -328,6 +591,26 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                   className="w-32 text-right text-xl font-semibold bg-transparent border-none focus-visible:ring-0"
                 />
               </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Balance: {token1Balance.isLoading ? '...' : token1Balance.formattedBalance} {selectedToken1?.symbol}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleMaxToken1}
+                  className="h-6 px-2 text-xs"
+                  disabled={!userAddress || token1Balance.isLoading}
+                >
+                  Max
+                </Button>
+              </div>
+              {token1Insufficient && (
+                <p className="text-xs text-destructive mt-1">
+                  Insufficient balance
+                </p>
+              )}
             </div>
           </div>
 
@@ -576,20 +859,27 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             </div>
           )}
 
-          {/* Error State */}
-          {batchCreatePool.currentStep === 'error' && batchCreatePool.error && (
-            <div className="p-6 rounded-xl bg-destructive/10 border border-destructive/20">
-              <div className="flex items-center gap-3 mb-3">
-                <XCircle className="w-6 h-6 text-destructive" />
-                <h3 className="text-lg font-bold text-destructive">Transaction Failed</h3>
-              </div>
+          {/* Error State - Using ErrorModal */}
+          <ErrorModal
+            isOpen={batchCreatePool.currentStep === 'error'}
+            error={batchCreatePool.error || null}
+            context={
+              batchCreatePool.currentStep.includes('approving') ? 'approval' :
+              batchCreatePool.currentStep.includes('creating') ? 'creation' :
+              batchCreatePool.currentStep.includes('initializing') ? 'initialization' :
+              undefined
+            }
+            onRetry={() => {
+              batchCreatePool.reset();
+              handleCreatePool();
+            }}
+            onClose={() => batchCreatePool.reset()}
+            onSwitchNetwork={networkValidation.switchToCorrectNetwork}
+          />
 
-              <p className="text-sm text-muted-foreground mb-4">{batchCreatePool.error.message}</p>
-
-              <Button onClick={() => batchCreatePool.reset()} variant="swap" className="w-full">
-                Try Again
-              </Button>
-            </div>
+          {/* Pre-Transaction Checklist */}
+          {userAddress && amount0 && amount1 && checklistItems.length > 0 && (
+            <PreTransactionChecklist items={checklistItems} />
           )}
 
           {/* Create Pool Button */}
