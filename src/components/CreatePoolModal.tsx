@@ -150,22 +150,44 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
   // Prepare SAMM and Fee params (only if not using defaults)
   const sammParams = useMemo(() => {
     if (useDefaultParams) return undefined;
-    return {
-      beta1: BigInt(beta1),
-      rmin: BigInt(rmin),
-      rmax: BigInt(rmax),
-      c: BigInt(cThreshold),
-    };
+    try {
+      // Validate that values are not empty and are valid numbers
+      if (!beta1 || !rmin || !rmax || !cThreshold) {
+        console.warn('[CreatePoolModal] Missing SAMM parameter values');
+        return undefined;
+      }
+      
+      return {
+        beta1: BigInt(beta1),
+        rmin: BigInt(rmin),
+        rmax: BigInt(rmax),
+        c: BigInt(cThreshold),
+      };
+    } catch (err) {
+      console.error('[CreatePoolModal] Error converting SAMM params to BigInt:', err);
+      return undefined;
+    }
   }, [useDefaultParams, beta1, rmin, rmax, cThreshold]);
 
   const feeParams = useMemo(() => {
     if (useDefaultParams) return undefined;
-    return {
-      tradeFeeNumerator: BigInt(tradeFeeNum),
-      tradeFeeDenominator: BigInt(tradeFeeDenom),
-      ownerFeeNumerator: BigInt(ownerFeeNum),
-      ownerFeeDenominator: BigInt(ownerFeeDenom),
-    };
+    try {
+      // Validate that values are not empty and are valid numbers
+      if (!tradeFeeNum || !tradeFeeDenom || !ownerFeeNum || !ownerFeeDenom) {
+        console.warn('[CreatePoolModal] Missing fee parameter values');
+        return undefined;
+      }
+      
+      return {
+        tradeFeeNumerator: BigInt(tradeFeeNum),
+        tradeFeeDenominator: BigInt(tradeFeeDenom),
+        ownerFeeNumerator: BigInt(ownerFeeNum),
+        ownerFeeDenominator: BigInt(ownerFeeDenom),
+      };
+    } catch (err) {
+      console.error('[CreatePoolModal] Error converting fee params to BigInt:', err);
+      return undefined;
+    }
   }, [useDefaultParams, tradeFeeNum, tradeFeeDenom, ownerFeeNum, ownerFeeDenom]);
 
   // Initialize batch create pool hook
@@ -245,6 +267,13 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
     }
   };
 
+  // Check if advanced params are invalid
+  const advancedParamsInvalid = useMemo(() => {
+    if (useDefaultParams) return false;
+    // If not using defaults, sammParams and feeParams must be valid
+    return !sammParams || !feeParams;
+  }, [useDefaultParams, sammParams, feeParams]);
+
   const isButtonDisabled =
     !userAddress ||
     !amount0 ||
@@ -254,6 +283,7 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
     ethInsufficient ||
     !networkValidation.isCorrectNetwork ||
     poolExistence.poolExists ||
+    advancedParamsInvalid ||
     batchCreatePool.isLoading ||
     batchCreatePool.currentStep === 'success';
 
@@ -286,10 +316,6 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
         passed: !token0Insufficient,
         loading: token0Balance.isLoading,
         details: `${token0Balance.formattedBalance} available, ${amount0} needed`,
-        action: token0Insufficient ? {
-          label: 'Get Tokens',
-          onClick: () => navigate('/faucet'),
-        } : undefined,
       });
     }
 
@@ -301,10 +327,6 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
         passed: !token1Insufficient,
         loading: token1Balance.isLoading,
         details: `${token1Balance.formattedBalance} available, ${amount1} needed`,
-        action: token1Insufficient ? {
-          label: 'Get Tokens',
-          onClick: () => navigate('/faucet'),
-        } : undefined,
       });
     }
 
@@ -619,6 +641,16 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                       SAMM curve parameters (scaled by 1e6). Only modify if you understand the implications.
                     </p>
 
+                    {/* Warning for invalid parameters */}
+                    {advancedParamsInvalid && (
+                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-destructive">
+                          Invalid parameter values. Please ensure all fields contain valid numbers.
+                        </p>
+                      </div>
+                    )}
+
                     {/* SAMM Parameters */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -784,8 +816,8 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
               {batchCreatePool.createdPoolAddress && (
                 <div className="bg-secondary/30 rounded-lg p-3 mb-4 w-full overflow-hidden">
                   <p className="text-xs text-muted-foreground mb-2 font-semibold">Pool Address</p>
-                  <div className="flex items-start gap-2 w-full min-w-0">
-                    <p className="text-xs font-mono text-primary break-all flex-1 min-w-0">
+                  <div className="flex items-start gap-2 w-full min-w-0 max-w-full">
+                    <p className="text-xs font-mono text-primary break-all flex-1 min-w-0 max-w-0 overflow-wrap-anywhere">
                       {batchCreatePool.createdPoolAddress}
                     </p>
                     <button
@@ -808,12 +840,12 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
                   .map((step, index) => (
                     <div key={index} className="bg-secondary/30 rounded-lg p-3 w-full overflow-hidden">
                       <p className="text-xs text-muted-foreground mb-2">{step.label}</p>
-                      <div className="flex items-start gap-2 w-full min-w-0">
+                      <div className="flex items-start gap-2 w-full min-w-0 max-w-full">
                         <a
                           href={`https://explorer.testnet.riselabs.xyz/tx/${step.hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs font-mono text-primary hover:underline break-all flex-1 min-w-0"
+                          className="text-xs font-mono text-primary hover:underline break-all flex-1 min-w-0 max-w-0 overflow-wrap-anywhere"
                           title={step.hash}
                         >
                           {step.hash}

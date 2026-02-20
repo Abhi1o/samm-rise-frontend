@@ -58,7 +58,7 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   });
 
   // Swap execution hook
-  const { executeSwap, swapState, txHash: swapHash } = useSwapExecution();
+  const { executeSwap, swapState, txHash: swapHash, reset: resetSwapExecution } = useSwapExecution();
 
   /**
    * Build progress steps for UI display
@@ -159,7 +159,8 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   const reset = useCallback(() => {
     setCurrentStep('idle');
     setError(undefined);
-  }, []);
+    resetSwapExecution(); // Reset swap execution state
+  }, [resetSwapExecution]);
 
   const isLoading = isApproving || swapState !== 'idle';
 

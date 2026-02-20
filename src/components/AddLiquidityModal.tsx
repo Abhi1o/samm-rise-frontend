@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,13 +7,14 @@ import { useNetwork } from "@/contexts/NetworkContext";
 import { getTokensForChain } from "@/config/tokens";
 import TokenLogo from "./TokenLogo";
 import { usePoolData } from "@/hooks/usePoolData";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useBalance } from "wagmi";
 import { SAMMPoolABI } from "@/config/abis";
-import { formatUnits, parseUnits, Address } from "viem";
+import { formatUnits, parseUnits, Address, parseEther } from "viem";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useBatchAddLiquidity } from "@/hooks/useBatchAddLiquidity";
 import { useToast } from "@/hooks/use-toast";
-import { useNativeBalance } from "@/hooks/useNativeBalance";
+import { useGasEstimation } from "@/hooks/useGasEstimation";
+import { PreTransactionChecklist, ChecklistItem } from "@/components/PreTransactionChecklist";
 
 interface AddLiquidityModalProps {
   isOpen: boolean;
@@ -75,6 +76,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
+  const [editingField, setEditingField] = useState<'amount0' | 'amount1' | null>(null);
 
   // Update tokens when network changes
   useEffect(() => {
@@ -110,31 +112,77 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
   // Get token balances
   const { 
-    balanceBigInt: balance0, 
+    balance: balance0, 
     isLoading: balance0Loading,
     refetch: refetchBalance0 
-  } = useTokenBalance(selectedToken0);
+  } = useTokenBalance({
+    tokenAddress: selectedToken0?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!selectedToken0 && !!userAddress,
+  });
   
   const { 
-    balanceBigInt: balance1, 
+    balance: balance1, 
     isLoading: balance1Loading,
     refetch: refetchBalance1 
-  } = useTokenBalance(selectedToken1);
+  } = useTokenBalance({
+    tokenAddress: selectedToken1?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!selectedToken1 && !!userAddress,
+  });
 
-  // Get native ETH balance for gas fee check
-  const { balance: ethBalance, balanceFormatted: ethBalanceFormatted, isLoading: ethBalanceLoading } = useNativeBalance();
-  
-  // Minimum ETH needed for gas (0.001 ETH = 1000000000000000 wei)
-  const MIN_ETH_FOR_GAS = parseUnits('0.001', 18);
-  const hasInsufficientGas = ethBalance < MIN_ETH_FOR_GAS;
+  // Gas estimation
+  const gasEstimation = useGasEstimation({ enabled: !!userAddress });
+
+  // ETH balance
+  const { data: ethBalance } = useBalance({
+    address: userAddress as Address,
+  });
+
+  // Check if ETH is insufficient for gas
+  const ethInsufficient = useMemo(() => {
+    if (!ethBalance || !gasEstimation.estimatedCostInEth) return false;
+    try {
+      const estimatedCost = parseEther(gasEstimation.estimatedCostInEth);
+      return ethBalance.value < estimatedCost;
+    } catch {
+      return false;
+    }
+  }, [ethBalance, gasEstimation.estimatedCostInEth]);
+
+  // Check if amounts exceed balances
+  const token0Insufficient = useMemo(() => {
+    if (!amount0 || !selectedToken0) return false;
+    try {
+      const amountWei = parseUnits(amount0, selectedToken0.decimals);
+      return amountWei > balance0;
+    } catch {
+      return false;
+    }
+  }, [amount0, selectedToken0, balance0]);
+
+  const token1Insufficient = useMemo(() => {
+    if (!amount1 || !selectedToken1) return false;
+    try {
+      const amountWei = parseUnits(amount1, selectedToken1.decimals);
+      return amountWei > balance1;
+    } catch {
+      return false;
+    }
+  }, [amount1, selectedToken1, balance1]);
 
   // Calculate minimum amounts with slippage
-  const amountAMin = amount0 && slippage
-    ? (parseFloat(amount0) * (1 - parseFloat(slippage) / 100)).toString()
-    : '0';
-  const amountBMin = amount1 && slippage
-    ? (parseFloat(amount1) * (1 - parseFloat(slippage) / 100)).toString()
-    : '0';
+  const { amountAMin, amountBMin } = useMemo(() => {
+    if (!amount0 || !amount1 || !slippage) {
+      return { amountAMin: '0', amountBMin: '0' };
+    }
+    
+    const slippageFactor = 1 - (parseFloat(slippage) / 100);
+    const amountAMin = (parseFloat(amount0) * slippageFactor).toFixed(6);
+    const amountBMin = (parseFloat(amount1) * slippageFactor).toFixed(6);
+    
+    return { amountAMin, amountBMin };
+  }, [amount0, amount1, slippage]);
 
   // Batch add liquidity hook - handles both approvals + add liquidity in single user action
   const batchLiquidity = useBatchAddLiquidity({
@@ -252,16 +300,140 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     };
   }, [poolState, selectedToken0, selectedToken1, selectedPool]);
 
-  // Auto-calculate amount1 when amount0 changes
-  useEffect(() => {
-    if (amount0 && poolInfo && !poolStateLoading) {
-      const amount0Num = parseFloat(amount0);
-      if (!isNaN(amount0Num) && amount0Num > 0) {
-        const calculatedAmount1 = amount0Num * poolInfo.price;
-        setAmount1(calculatedAmount1.toFixed(6));
-      }
+  // Calculate optimal amount1 based on pool reserves
+  const calculateOptimalAmount1 = useCallback((amount0Input: string): string => {
+    if (!poolInfo || !amount0Input || !selectedToken0 || !selectedToken1) return '';
+    
+    const amount0Num = parseFloat(amount0Input);
+    if (isNaN(amount0Num) || amount0Num <= 0) return '';
+    
+    // Use exact reserve ratio: amount1 = amount0 * (reserve1 / reserve0)
+    const optimalAmount1 = amount0Num * (poolInfo.reserve1Formatted / poolInfo.reserve0Formatted);
+    
+    return optimalAmount1.toFixed(6);
+  }, [poolInfo, selectedToken0, selectedToken1]);
+
+  // Calculate optimal amount0 based on pool reserves
+  const calculateOptimalAmount0 = useCallback((amount1Input: string): string => {
+    if (!poolInfo || !amount1Input || !selectedToken0 || !selectedToken1) return '';
+    
+    const amount1Num = parseFloat(amount1Input);
+    if (isNaN(amount1Num) || amount1Num <= 0) return '';
+    
+    // Use exact reserve ratio: amount0 = amount1 * (reserve0 / reserve1)
+    const optimalAmount0 = amount1Num * (poolInfo.reserve0Formatted / poolInfo.reserve1Formatted);
+    
+    return optimalAmount0.toFixed(6);
+  }, [poolInfo, selectedToken0, selectedToken1]);
+
+  // Handle amount0 input change
+  const handleAmount0Change = useCallback((value: string) => {
+    setAmount0(value);
+    setEditingField('amount0');
+    
+    if (value && poolInfo) {
+      const optimal = calculateOptimalAmount1(value);
+      setAmount1(optimal);
+    } else {
+      setAmount1('');
     }
-  }, [amount0, poolInfo, poolStateLoading]);
+  }, [poolInfo, calculateOptimalAmount1]);
+
+  // Handle amount1 input change
+  const handleAmount1Change = useCallback((value: string) => {
+    setAmount1(value);
+    setEditingField('amount1');
+    
+    if (value && poolInfo) {
+      const optimal = calculateOptimalAmount0(value);
+      setAmount0(optimal);
+    } else {
+      setAmount0('');
+    }
+  }, [poolInfo, calculateOptimalAmount0]);
+
+  // Handle MAX button for amount0
+  const handleMaxAmount0 = useCallback(() => {
+    if (!balance0 || !poolInfo || !selectedToken0 || !selectedToken1) return;
+    
+    const maxAmount0 = parseFloat(formatUnits(balance0, selectedToken0.decimals));
+    const maxAmount0Str = maxAmount0.toString();
+    setAmount0(maxAmount0Str);
+    setEditingField('amount0');
+    
+    // Calculate corresponding amount1
+    const optimalAmount1 = calculateOptimalAmount1(maxAmount0Str);
+    
+    // Check if user has enough of token1
+    if (balance1 && optimalAmount1) {
+      try {
+        const requiredAmount1 = parseUnits(optimalAmount1, selectedToken1.decimals);
+        if (requiredAmount1 > balance1) {
+          // User doesn't have enough token1, calculate max based on token1 balance
+          const maxAmount1 = parseFloat(formatUnits(balance1, selectedToken1.decimals));
+          const maxAmount1Str = maxAmount1.toString();
+          setAmount1(maxAmount1Str);
+          
+          const adjustedAmount0 = calculateOptimalAmount0(maxAmount1Str);
+          setAmount0(adjustedAmount0);
+          
+          toast({
+            title: "Adjusted Amounts",
+            description: `Adjusted to maximum based on your ${selectedToken1.symbol} balance`,
+          });
+        } else {
+          setAmount1(optimalAmount1);
+        }
+      } catch (e) {
+        setAmount1(optimalAmount1);
+      }
+    } else {
+      setAmount1(optimalAmount1);
+    }
+  }, [balance0, balance1, poolInfo, selectedToken0, selectedToken1, calculateOptimalAmount1, calculateOptimalAmount0, toast]);
+
+  // Handle MAX button for amount1
+  const handleMaxAmount1 = useCallback(() => {
+    if (!balance1 || !poolInfo || !selectedToken0 || !selectedToken1) return;
+    
+    const maxAmount1 = parseFloat(formatUnits(balance1, selectedToken1.decimals));
+    const maxAmount1Str = maxAmount1.toString();
+    setAmount1(maxAmount1Str);
+    setEditingField('amount1');
+    
+    // Calculate corresponding amount0
+    const optimalAmount0 = calculateOptimalAmount0(maxAmount1Str);
+    
+    // Check if user has enough of token0
+    if (balance0 && optimalAmount0) {
+      try {
+        const requiredAmount0 = parseUnits(optimalAmount0, selectedToken0.decimals);
+        if (requiredAmount0 > balance0) {
+          // User doesn't have enough token0, calculate max based on token0 balance
+          const maxAmount0 = parseFloat(formatUnits(balance0, selectedToken0.decimals));
+          const maxAmount0Str = maxAmount0.toString();
+          setAmount0(maxAmount0Str);
+          
+          const adjustedAmount1 = calculateOptimalAmount1(maxAmount0Str);
+          setAmount1(adjustedAmount1);
+          
+          toast({
+            title: "Adjusted Amounts",
+            description: `Adjusted to maximum based on your ${selectedToken0.symbol} balance`,
+          });
+        } else {
+          setAmount0(optimalAmount0);
+        }
+      } catch (e) {
+        setAmount0(optimalAmount0);
+      }
+    } else {
+      setAmount0(optimalAmount0);
+    }
+  }, [balance0, balance1, poolInfo, selectedToken0, selectedToken1, calculateOptimalAmount0, calculateOptimalAmount1, toast]);
+
+  // Auto-calculate amount1 when amount0 changes (removed - replaced with manual handlers)
+  // This was causing incorrect calculations
 
   // Handle add liquidity with proper approval flow
   const handleAddLiquidity = async () => {
@@ -296,7 +468,6 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
   // Get button text based on current state - Premium UX with detailed status
   const getButtonText = () => {
     if (!userAddress) return "Connect Wallet";
-    if (hasInsufficientGas) return "Insufficient ETH for Gas";
     if (!selectedPool) return "Select Pool";
     if (!amount0 || !amount1) return "Enter Amounts";
 
@@ -341,14 +512,78 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
     return null;
   };
 
-  const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading || ethBalanceLoading;
+  // Build checklist items
+  const checklistItems: ChecklistItem[] = useMemo(() => {
+    if (!userAddress) return [];
+
+    const items: ChecklistItem[] = [];
+
+    // Token0 balance check
+    if (selectedToken0 && amount0) {
+      items.push({
+        id: 'token0-balance',
+        label: `Sufficient ${selectedToken0.symbol} balance`,
+        passed: !token0Insufficient,
+        loading: balance0Loading,
+        details: token0Insufficient 
+          ? `${parseFloat(formatUnits(balance0, selectedToken0.decimals)).toFixed(6)} available, ${amount0} needed`
+          : undefined,
+      });
+    }
+
+    // Token1 balance check
+    if (selectedToken1 && amount1) {
+      items.push({
+        id: 'token1-balance',
+        label: `Sufficient ${selectedToken1.symbol} balance`,
+        passed: !token1Insufficient,
+        loading: balance1Loading,
+        details: token1Insufficient
+          ? `${parseFloat(formatUnits(balance1, selectedToken1.decimals)).toFixed(6)} available, ${amount1} needed`
+          : undefined,
+      });
+    }
+
+    // ETH balance check
+    items.push({
+      id: 'eth-balance',
+      label: 'Sufficient ETH for gas',
+      passed: !ethInsufficient,
+      loading: gasEstimation.isEstimating,
+      details: ethInsufficient ? `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH needed` : undefined,
+      action: ethInsufficient ? {
+        label: 'Get ETH',
+        onClick: () => window.open('https://faucet.riselabs.xyz', '_blank'),
+      } : undefined,
+    });
+
+    return items;
+  }, [
+    userAddress,
+    selectedToken0,
+    selectedToken1,
+    amount0,
+    amount1,
+    token0Insufficient,
+    token1Insufficient,
+    ethInsufficient,
+    balance0,
+    balance1,
+    balance0Loading,
+    balance1Loading,
+    gasEstimation,
+  ]);
+
+  const isLoading = poolsLoading || poolStateLoading || balance0Loading || balance1Loading;
   const isButtonDisabled =
     !selectedPool ||
     !amount0 ||
     !amount1 ||
     !userAddress ||
     isLoading ||
-    hasInsufficientGas ||
+    token0Insufficient ||
+    token1Insufficient ||
+    ethInsufficient ||
     batchLiquidity.isLoading ||
     batchLiquidity.currentStep === 'success';
 
@@ -521,23 +756,6 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
             </div>
           )}
 
-          {/* Insufficient Gas Warning */}
-          {hasInsufficientGas && userAddress && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-destructive mb-2">Insufficient ETH for Gas</p>
-                <p className="text-sm text-muted-foreground mb-2 break-words">
-                  You have <span className="font-semibold text-foreground">{parseFloat(ethBalanceFormatted).toFixed(6)} ETH</span>. 
-                  You need at least <span className="font-semibold text-foreground">0.001 ETH</span> to pay for gas fees.
-                </p>
-                <p className="text-sm text-primary font-medium">
-                  Get testnet ETH from a faucet to continue.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Amount Inputs */}
           {selectedPool && (
             <div>
@@ -546,7 +764,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
               </div>
 
               {/* Token 0 Input */}
-              <div className="bg-secondary/30 rounded-xl p-4 mb-3 border border-border/50">
+              <div className={`bg-secondary/30 rounded-xl p-4 mb-3 border ${token0Insufficient ? 'border-destructive' : 'border-border/50'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <TokenLogo
@@ -562,7 +780,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                       type="number"
                       placeholder="0.00"
                       value={amount0}
-                      onChange={(e) => setAmount0(e.target.value)}
+                      onChange={(e) => handleAmount0Change(e.target.value)}
                       className="w-32 text-right text-lg font-semibold bg-transparent border-none focus-visible:ring-0 p-0"
                       disabled={isLoading || !poolInfo || batchLiquidity.currentStep !== 'idle'}
                     />
@@ -572,20 +790,22 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                   <span>Balance: {balance0 ? parseFloat(formatUnits(balance0, selectedToken0?.decimals || 18)).toFixed(4) : "0.00"}</span>
                   {balance0 && batchLiquidity.currentStep === 'idle' && (
                     <button
-                      onClick={() => {
-                        const maxAmount = parseFloat(formatUnits(balance0, selectedToken0?.decimals || 18));
-                        setAmount0(maxAmount.toString());
-                      }}
+                      onClick={handleMaxAmount0}
                       className="text-primary hover:underline"
                     >
                       MAX
                     </button>
                   )}
                 </div>
+                {token0Insufficient && (
+                  <p className="text-xs text-destructive mt-1">
+                    Insufficient balance
+                  </p>
+                )}
               </div>
 
               {/* Token 1 Input */}
-              <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
+              <div className={`bg-secondary/30 rounded-xl p-4 border ${token1Insufficient ? 'border-destructive' : 'border-border/50'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <TokenLogo
@@ -601,7 +821,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                       type="number"
                       placeholder="0.00"
                       value={amount1}
-                      onChange={(e) => setAmount1(e.target.value)}
+                      onChange={(e) => handleAmount1Change(e.target.value)}
                       className="w-32 text-right text-lg font-semibold bg-transparent border-none focus-visible:ring-0 p-0"
                       disabled={isLoading || !poolInfo || batchLiquidity.currentStep !== 'idle'}
                     />
@@ -611,21 +831,18 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                   <span>Balance: {balance1 ? parseFloat(formatUnits(balance1, selectedToken1?.decimals || 18)).toFixed(4) : "0.00"}</span>
                   {balance1 && batchLiquidity.currentStep === 'idle' && (
                     <button
-                      onClick={() => {
-                        const maxAmount1 = parseFloat(formatUnits(balance1, selectedToken1?.decimals || 18));
-                        setAmount1(maxAmount1.toString());
-                        // Calculate corresponding amount0
-                        if (poolInfo) {
-                          const calculatedAmount0 = maxAmount1 / poolInfo.price;
-                          setAmount0(calculatedAmount0.toFixed(6));
-                        }
-                      }}
+                      onClick={handleMaxAmount1}
                       className="text-primary hover:underline"
                     >
                       MAX
                     </button>
                   )}
                 </div>
+                {token1Insufficient && (
+                  <p className="text-xs text-destructive mt-1">
+                    Insufficient balance
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -698,34 +915,12 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
               <div className="flex items-start gap-3 mb-4">
                 <CheckCircle2 className="w-6 h-6 text-green-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-bold text-green-500 mb-1">Pool Created & Initialized!</h3>
+                  <h3 className="text-lg font-bold text-green-500 mb-1">Liquidity Added Successfully!</h3>
                   <p className="text-sm text-muted-foreground break-words">
-                    Your pool has been successfully created and initialized with liquidity. The pool is now live and ready for trading!
+                    Your liquidity has been added to the pool. You can now earn trading fees from this pool!
                   </p>
                 </div>
               </div>
-              
-              {/* Pool Address */}
-              {batchLiquidity.steps.filter(s => s.hash).length > 0 && (
-                <div className="mt-4 p-3 rounded-lg bg-secondary/30 border border-border/50 max-w-full">
-                  <p className="text-xs text-muted-foreground mb-2 font-semibold">Pool Address</p>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="text-xs font-mono text-primary min-w-0 flex-1" style={{ wordBreak: 'break-all' }}>
-                      {/* This would be the pool address - for now showing placeholder */}
-                      0x2e520082f83fe5e0628f0a107d1447f43ec7c887
-                    </p>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText('0x2e520082f83fe5e0628f0a107d1447f43ec7c887');
-                        toast({ title: "Copied!", description: "Pool address copied to clipboard" });
-                      }}
-                      className="text-xs text-primary hover:text-primary/80 flex-shrink-0 whitespace-nowrap"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              )}
               
               {/* Transaction Hashes */}
               <div className="mt-4 space-y-3 max-w-full">
@@ -776,18 +971,30 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
 
           {/* Transaction Error Display */}
           {batchLiquidity.currentStep === 'error' && (
-            <div className="p-6 rounded-xl bg-destructive/10 border border-destructive/20">
-              <div className="flex items-start gap-3 mb-4">
+            <div className="p-6 rounded-xl bg-destructive/10 border border-destructive/20 min-w-0">
+              <div className="flex items-start gap-3 mb-4 min-w-0">
                 <AlertCircle className="w-6 h-6 text-destructive flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-bold text-destructive mb-1">Transaction Failed</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
+                  <p 
+                    className="text-sm text-muted-foreground mb-3 min-w-0"
+                    style={{ 
+                      wordBreak: 'break-word', 
+                      overflowWrap: 'break-word'
+                    }}
+                  >
                     {getErrorMessage() || 'An error occurred while processing your transaction'}
                   </p>
                   {batchLiquidity.steps.find(s => s.hash) && (
-                    <div className="mt-3">
+                    <div className="mt-3 min-w-0">
                       <p className="text-xs text-muted-foreground mb-1">Transaction Hash</p>
-                      <p className="text-xs font-mono text-muted-foreground break-all">
+                      <p 
+                        className="text-xs font-mono text-muted-foreground min-w-0"
+                        style={{ 
+                          wordBreak: 'break-all', 
+                          overflowWrap: 'anywhere'
+                        }}
+                      >
                         {batchLiquidity.steps.find(s => s.hash)?.hash}
                       </p>
                     </div>
@@ -804,6 +1011,11 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 Try Again
               </Button>
             </div>
+          )}
+
+          {/* Pre-Transaction Checklist - Only shows issues */}
+          {userAddress && amount0 && amount1 && selectedPool && (
+            <PreTransactionChecklist items={checklistItems} />
           )}
 
           {/* Add Liquidity Button - Only show when not in success/error state */}
@@ -829,6 +1041,20 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 </>
               )}
             </Button>
+          )}
+
+          {/* Gas Estimation - Bottom */}
+          {userAddress && selectedPool && (
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">
+                Estimated Gas: {gasEstimation.isEstimating ? '...' : `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH`}
+              </p>
+              {ethInsufficient && (
+                <p className="text-xs text-destructive mt-1">
+                  Insufficient ETH for gas
+                </p>
+              )}
+            </div>
           )}
         </div>
       </DialogContent>

@@ -81,15 +81,23 @@ const EnhancedSwapCard = () => {
 
   // Fetch balances for from and to tokens
   const {
-    balanceFormatted: fromBalanceFormatted,
+    formattedBalance: fromBalanceFormatted,
     isLoading: fromBalanceLoading,
     refetch: refetchFromBalance,
-  } = useTokenBalance(fromTokenConfig);
+  } = useTokenBalance({
+    tokenAddress: fromTokenConfig?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!fromTokenConfig && !!userAddress,
+  });
   const {
-    balanceFormatted: toBalanceFormatted,
+    formattedBalance: toBalanceFormatted,
     isLoading: toBalanceLoading,
     refetch: refetchToBalance,
-  } = useTokenBalance(toTokenConfig);
+  } = useTokenBalance({
+    tokenAddress: toTokenConfig?.address as Address,
+    userAddress: userAddress as Address,
+    enabled: !!toTokenConfig && !!userAddress,
+  });
 
   // Fetch prices for from and to tokens
   const { price: fromPrice, isLoading: fromPriceLoading } = useTokenPrice(fromTokenConfig);
@@ -149,13 +157,6 @@ const EnhancedSwapCard = () => {
       setRouteInfo("");
     }
   }, [fromValue, fromToken.address, toToken.address]);
-
-  // Reset swap state when tokens or values change
-  useEffect(() => {
-    if (batchSwap.currentStep === 'success' || batchSwap.currentStep === 'error') {
-      batchSwap.reset();
-    }
-  }, [fromToken.address, toToken.address, fromValue]);
 
   // Refresh balances when swap succeeds (but don't auto-reset, let user click "Done")
   useEffect(() => {
@@ -458,8 +459,9 @@ const EnhancedSwapCard = () => {
   // Get button text based on current state
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
-    if (!fromValue || !toValue) return "Enter an amount";
+    if (!fromValue) return "Enter an amount";
     if (loading) return "Fetching quote...";
+    if (!toValue) return "Enter an amount";
 
     // Batch swap states
     switch (batchSwap.currentStep) {
@@ -483,10 +485,11 @@ const EnhancedSwapCard = () => {
   };
 
   // Button should be disabled during loading or transaction states
+  // BUT: Don't disable while fetching quote - show "Fetching quote..." text instead
   const isButtonDisabled =
+    !isConnected ||
     !fromValue ||
-    loading ||
-    !toValue ||
+    (!toValue && !loading) ||  // Allow button to show "Fetching quote..." when loading
     batchSwap.isLoading ||
     batchSwap.currentStep === 'success';
 
@@ -721,18 +724,30 @@ const EnhancedSwapCard = () => {
 
           {/* Transaction Error Display */}
           {batchSwap.currentStep === 'error' && (
-            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
-              <div className="flex items-start gap-3 mb-3">
+            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 min-w-0">
+              <div className="flex items-start gap-3 mb-3 min-w-0">
                 <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <h3 className="text-base font-bold text-destructive mb-1">Transaction Failed</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p 
+                    className="text-sm text-muted-foreground min-w-0"
+                    style={{ 
+                      wordBreak: 'break-word', 
+                      overflowWrap: 'break-word'
+                    }}
+                  >
                     {batchSwap.error?.message || 'An error occurred while processing your transaction'}
                   </p>
                   {batchSwap.steps.find(s => s.hash) && (
-                    <div className="mt-2">
+                    <div className="mt-2 min-w-0">
                       <p className="text-xs text-muted-foreground mb-1">Transaction Hash</p>
-                      <p className="text-xs font-mono text-muted-foreground break-all">
+                      <p 
+                        className="text-xs font-mono text-muted-foreground min-w-0"
+                        style={{ 
+                          wordBreak: 'break-all', 
+                          overflowWrap: 'anywhere'
+                        }}
+                      >
                         {batchSwap.steps.find(s => s.hash)?.hash}
                       </p>
                     </div>
