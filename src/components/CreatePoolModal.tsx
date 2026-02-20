@@ -358,14 +358,6 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
         </DialogHeader>
 
         <div className="space-y-6 pt-4">
-          {/* Network Display */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Network:</span>
-            <span className="font-semibold text-foreground">
-              {selectedNetwork?.displayName || "Not Connected"}
-            </span>
-          </div>
-
           {/* Wrong Network Warning */}
           {userAddress && !networkValidation.isCorrectNetwork && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
@@ -387,23 +379,6 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             </div>
           )}
 
-          {/* Gas Estimation & ETH Warning */}
-          {userAddress && networkValidation.isCorrectNetwork && (
-            <div className="bg-secondary/20 rounded-xl p-3 border border-border/30">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Estimated Gas:</span>
-                <span className="font-semibold">
-                  {gasEstimation.isEstimating ? '...' : `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH`}
-                </span>
-              </div>
-              {ethInsufficient && (
-                <p className="text-xs text-destructive mt-2">
-                  Insufficient ETH for gas. You need at least {gasEstimation.estimatedCostInEth} ETH
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Pool Already Exists Warning */}
           {poolExistence.poolExists && poolExistence.poolAddress && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
@@ -420,16 +395,20 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             </div>
           )}
 
-          {/* Info Banner */}
-          <div className="bg-primary/10 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-primary">SAMM Pool Creation</p>
-              <p className="text-sm text-muted-foreground mt-1">
+          {/* Info Banner - Collapsible */}
+          <details className="bg-primary/10 border border-primary/20 rounded-xl">
+            <summary className="cursor-pointer p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-primary">SAMM Pool Creation</p>
+              </div>
+            </summary>
+            <div className="px-4 pb-4">
+              <p className="text-sm text-muted-foreground">
                 SAMM uses a unique sharded AMM design. Each pool is automatically created with Small, Medium, and Large shards for optimal liquidity distribution.
               </p>
             </div>
-          </div>
+          </details>
 
           {/* Token Pair Selection */}
           <div>
@@ -877,8 +856,8 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
             onSwitchNetwork={networkValidation.switchToCorrectNetwork}
           />
 
-          {/* Pre-Transaction Checklist */}
-          {userAddress && amount0 && amount1 && checklistItems.length > 0 && (
+          {/* Pre-Transaction Checklist - Only shows issues */}
+          {userAddress && amount0 && amount1 && (
             <PreTransactionChecklist items={checklistItems} />
           )}
 
@@ -894,6 +873,20 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
               {batchCreatePool.isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {getButtonText()}
             </Button>
+          )}
+
+          {/* Gas Estimation - Bottom */}
+          {userAddress && networkValidation.isCorrectNetwork && (
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">
+                Estimated Gas: {gasEstimation.isEstimating ? '...' : `~${parseFloat(gasEstimation.estimatedCostInEth).toFixed(6)} ETH`}
+              </p>
+              {ethInsufficient && (
+                <p className="text-xs text-destructive mt-1">
+                  Insufficient ETH for gas
+                </p>
+              )}
+            </div>
           )}
 
           <p className="text-xs text-center text-muted-foreground">
