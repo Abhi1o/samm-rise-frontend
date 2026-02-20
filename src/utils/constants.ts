@@ -45,10 +45,16 @@ export const CROSS_POOL_ROUTER_ADDRESS = '0x622c2D2719197A047f29BCBaaaEBBDbD54b4
  * RiseChain's eth_estimateGas returns values that exceed the network's
  * acceptable threshold, causing "gas limit too high" errors. Setting
  * explicit gas bypasses estimation entirely.
+ * 
+ * NOTE: For swaps, gas limit is calculated dynamically based on number of hops:
+ * - 1 hop (direct): 400,000 gas
+ * - 2 hops: 1,000,000 gas
+ * - 3 hops: 1,500,000 gas
+ * - 4 hops: 2,000,000 gas
  */
 export const GAS_LIMITS = {
   approve: 100_000n,           // ERC20 approve
-  swap: 600_000n,              // swapExactOutput (multi-hop)
+  swap: 600_000n,              // DEPRECATED: Use dynamic calculation in useSwapExecution
   addLiquidity: 400_000n,      // addLiquidity
   removeLiquidity: 300_000n,   // removeLiquidity
   createShard: 3_000_000n,     // createShard / createShardDefault (deploys contract)

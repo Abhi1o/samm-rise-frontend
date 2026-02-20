@@ -196,6 +196,27 @@ export function useSwapExecution(): UseSwapExecutionReturn {
 
           console.log('Calling swap contract...');
 
+          // Calculate gas limit based on number of hops
+          // Multi-hop swaps require significantly more gas than direct swaps
+          // Direct swap: ~300,000 gas
+          // 2-hop swap: ~800,000 - 1,000,000 gas
+          // 3-hop swap: ~1,200,000 - 1,500,000 gas
+          // 4-hop swap: ~1,800,000 - 2,000,000 gas
+          const numHops = swapParams.hops.length;
+          let gasLimit: bigint;
+          
+          if (numHops === 1) {
+            gasLimit = 400_000n; // Direct swap
+          } else if (numHops === 2) {
+            gasLimit = 1_000_000n; // 2-hop swap
+          } else if (numHops === 3) {
+            gasLimit = 1_500_000n; // 3-hop swap
+          } else {
+            gasLimit = 2_000_000n; // 4-hop swap
+          }
+          
+          console.log(`Gas limit for ${numHops}-hop swap: ${gasLimit.toString()}`);
+
           // Execute swap - this will open the wallet for signature
           // @ts-ignore - wagmi v2 type inference issue with complex ABIs
           swap({
@@ -203,7 +224,7 @@ export function useSwapExecution(): UseSwapExecutionReturn {
             abi: CROSS_POOL_ROUTER_ABI,
             functionName: 'swapExactOutput',
             args: [swapParams],
-            gas: GAS_LIMITS.swap,
+            gas: gasLimit,
           });
 
           console.log('Swap contract call initiated, waiting for confirmation...');
