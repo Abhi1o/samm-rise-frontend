@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle } from "lucide-react";
 import { useAccount, useChainId } from "wagmi";
-import { Address } from "viem";
+import { Address, formatUnits } from "viem";
 import TokenInput from "./TokenInput";
 import TokenSelectModal, { Token } from "./TokenSelectModal";
 import { Button } from "./ui/button";
@@ -223,7 +223,9 @@ const EnhancedSwapCard = () => {
       });
       
       // Convert amountIn to human-readable format
-      const amountInHuman = (parseFloat(amountInSmallestUnit) / Math.pow(10, fromToken.decimals)).toString();
+      // CRITICAL FIX: Use formatUnits for precision with high-decimal tokens
+      // parseFloat loses precision for 18-decimal tokens like WETH
+      const amountInHuman = formatUnits(BigInt(amountInSmallestUnit), fromToken.decimals);
       
       // CRITICAL: Backend uses "exact output" model, but UI is "exact input"
       // Solution: Use a simple estimation for the output amount
@@ -240,8 +242,19 @@ const EnhancedSwapCard = () => {
         if (poolsResponse.shards && poolsResponse.shards.length > 0) {
           // Use the largest pool for estimation (most accurate pricing)
           const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
-          const reserveIn = parseFloat(largestPool.reserveA);
-          const reserveOut = parseFloat(largestPool.reserveB);
+          
+          // CRITICAL FIX: Check which reserve corresponds to which token
+          // The pool might be inverted (tokenA/tokenB order doesn't match our fromToken/toToken order)
+          let reserveIn, reserveOut;
+          if (largestPool.tokenA === fromToken.symbol) {
+            // Pool is: fromToken (A) / toToken (B)
+            reserveIn = parseFloat(largestPool.reserveA);
+            reserveOut = parseFloat(largestPool.reserveB);
+          } else {
+            // Pool is inverted: toToken (A) / fromToken (B)
+            reserveIn = parseFloat(largestPool.reserveB);
+            reserveOut = parseFloat(largestPool.reserveA);
+          }
           
           // Constant product formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
           const amountInFloat = parseFloat(amountInHuman);
@@ -279,14 +292,33 @@ const EnhancedSwapCard = () => {
               const pool1 = leg1Response.shards[leg1Response.shards.length - 1];
               const pool2 = leg2Response.shards[leg2Response.shards.length - 1];
               
+              // CRITICAL FIX: Check which reserve corresponds to which token
+              // The pool might be inverted (tokenA/tokenB order doesn't match our fromToken/toToken order)
+              
               // First hop: fromToken → intermediate
-              const reserve1In = parseFloat(pool1.reserveA);
-              const reserve1Out = parseFloat(pool1.reserveB);
+              let reserve1In, reserve1Out;
+              if (pool1.tokenA === fromToken.symbol) {
+                // Pool is: fromToken (A) / intermediate (B)
+                reserve1In = parseFloat(pool1.reserveA);
+                reserve1Out = parseFloat(pool1.reserveB);
+              } else {
+                // Pool is inverted: intermediate (A) / fromToken (B)
+                reserve1In = parseFloat(pool1.reserveB);
+                reserve1Out = parseFloat(pool1.reserveA);
+              }
               const intermediateAmount = (amountInFloat * reserve1Out) / (reserve1In + amountInFloat);
               
               // Second hop: intermediate → toToken
-              const reserve2In = parseFloat(pool2.reserveA);
-              const reserve2Out = parseFloat(pool2.reserveB);
+              let reserve2In, reserve2Out;
+              if (pool2.tokenA === intermediate) {
+                // Pool is: intermediate (A) / toToken (B)
+                reserve2In = parseFloat(pool2.reserveA);
+                reserve2Out = parseFloat(pool2.reserveB);
+              } else {
+                // Pool is inverted: toToken (A) / intermediate (B)
+                reserve2In = parseFloat(pool2.reserveB);
+                reserve2Out = parseFloat(pool2.reserveA);
+              }
               estimatedOut = (intermediateAmount * reserve2Out) / (reserve2In + intermediateAmount);
               
               console.log('Multi-hop estimation via', intermediate, ':', {

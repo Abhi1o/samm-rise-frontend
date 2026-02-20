@@ -4,7 +4,7 @@ import { Address } from 'viem';
 import { CROSS_POOL_ROUTER_ABI } from '@/config/abis';
 import { getCrossPoolRouter } from '@/config/contracts';
 import { useToast } from '@/hooks/use-toast';
-import { DEFAULT_DEADLINE, DEFAULT_SLIPPAGE, GAS_LIMITS } from '@/utils/constants';
+import { DEFAULT_DEADLINE, DEFAULT_SLIPPAGE } from '@/utils/constants';
 import { transactionStorage } from '@/services/transactionStorage';
 import { getTokensForChain } from '@/config/tokens';
 
@@ -123,9 +123,12 @@ export function useSwapExecution(): UseSwapExecutionReturn {
       const amountInDecimal = parseFloat(quoteData.amountIn);
       const baseAmountIn = BigInt(Math.floor(amountInDecimal * Math.pow(10, fromDecimals)));
       
-      // Use 5% extra slippage to handle the forward/reverse calculation mismatch
+      // Use 10% extra slippage to handle the forward/reverse calculation mismatch
       // This ensures the contract has enough input allowance to achieve the desired output
-      const extraSlippage = 500; // 5% in basis points
+      // CRITICAL: The backend's estimate is based on forward calculation (input → output)
+      // but the contract uses reverse calculation (output → input), which can require
+      // significantly more input due to fees and SAMM curve non-linearity
+      const extraSlippage = 1000; // 10% in basis points
       const totalSlippage = slippage + extraSlippage;
       
       const maxAmountIn = baseAmountIn + (baseAmountIn * BigInt(totalSlippage)) / 10000n;
@@ -198,21 +201,22 @@ export function useSwapExecution(): UseSwapExecutionReturn {
 
           // Calculate gas limit based on number of hops
           // Multi-hop swaps require significantly more gas than direct swaps
+          // UPDATED: Increased limits after observing actual gas usage
           // Direct swap: ~300,000 gas
-          // 2-hop swap: ~800,000 - 1,000,000 gas
-          // 3-hop swap: ~1,200,000 - 1,500,000 gas
-          // 4-hop swap: ~1,800,000 - 2,000,000 gas
+          // 2-hop swap: ~1,000,000 - 1,500,000 gas (increased from 1M)
+          // 3-hop swap: ~1,500,000 - 2,000,000 gas
+          // 4-hop swap: ~2,000,000 - 2,500,000 gas
           const numHops = swapParams.hops.length;
           let gasLimit: bigint;
           
           if (numHops === 1) {
-            gasLimit = 400_000n; // Direct swap
+            gasLimit = 500_000n; // Direct swap (increased for safety)
           } else if (numHops === 2) {
-            gasLimit = 1_000_000n; // 2-hop swap
+            gasLimit = 1_500_000n; // 2-hop swap (increased from 1M)
           } else if (numHops === 3) {
-            gasLimit = 1_500_000n; // 3-hop swap
+            gasLimit = 2_000_000n; // 3-hop swap (increased from 1.5M)
           } else {
-            gasLimit = 2_000_000n; // 4-hop swap
+            gasLimit = 2_500_000n; // 4-hop swap (increased from 2M)
           }
           
           console.log(`Gas limit for ${numHops}-hop swap: ${gasLimit.toString()}`);
