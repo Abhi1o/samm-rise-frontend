@@ -213,18 +213,28 @@ class SAMMApiService {
           throw new Error(`Token info not found for ${shard.tokenIn} or ${shard.tokenOut}`);
         }
         
-        // For multi-hop, we need to calculate amountOut for each hop
-        // The backend should provide this, but for now we'll use the final amountOut for the last hop
-        // and let the contract calculate intermediate amounts
+        // CRITICAL FIX: Backend's amountOut is already in decimal format (e.g., "0.1")
+        // We need to convert it to wei format for the contract
+        // But ONLY for the final hop - intermediate hops are calculated by the contract
         let hopAmountOut: string;
         if (index === data.shardsData.length - 1) {
           // Last hop: convert decimal amountOut to wei format
-          // data.amountOut is a decimal string like "3681.173637"
+          // data.amountOut is a decimal string like "0.1" or "11.848265"
           const amountOutDecimal = parseFloat(data.amountOut);
-          const amountOutWei = Math.floor(amountOutDecimal * Math.pow(10, toInfo.decimals));
-          hopAmountOut = amountOutWei.toString();
+          
+          // Use BigInt for precision with high-decimal tokens
+          if (toInfo.decimals <= 8) {
+            // Safe to use Math for low-decimal tokens
+            const amountOutWei = Math.floor(amountOutDecimal * Math.pow(10, toInfo.decimals));
+            hopAmountOut = amountOutWei.toString();
+          } else {
+            // Use string manipulation for high-decimal tokens to avoid precision loss
+            const [whole = '0', fraction = ''] = data.amountOut.split('.');
+            const paddedFraction = fraction.padEnd(toInfo.decimals, '0').slice(0, toInfo.decimals);
+            hopAmountOut = BigInt(whole + paddedFraction).toString();
+          }
         } else {
-          // Intermediate hops: contract will calculate
+          // Intermediate hops: contract will calculate, use 0
           hopAmountOut = '0';
         }
         
