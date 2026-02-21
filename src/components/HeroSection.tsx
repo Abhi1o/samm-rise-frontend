@@ -20,7 +20,7 @@ const HeroSection = () => {
             </div>
 
             <h1
-              className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-4 sm:mb-6 animate-fade-in"
+              className="text-2xl sm:text-4xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-3 sm:mb-6 animate-fade-in"
               style={{ animationDelay: "0.1s" }}
             >
               <span className="text-foreground">Trade with</span>
@@ -33,7 +33,7 @@ const HeroSection = () => {
             </h1>
 
             <p
-              className="text-base md:text-lg text-muted-foreground mb-5 sm:mb-8 max-w-lg mx-auto lg:mx-0 animate-fade-in"
+              className="text-sm sm:text-base md:text-lg text-muted-foreground mb-4 sm:mb-8 max-w-lg mx-auto lg:mx-0 animate-fade-in"
               style={{ animationDelay: "0.2s" }}
             >
               The First Dynamically Sharded AMM

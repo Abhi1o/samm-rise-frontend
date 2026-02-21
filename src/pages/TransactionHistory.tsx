@@ -40,12 +40,14 @@ const TransactionHistory = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Transaction History - SAMM DEX</title>
-        <meta
-          name="description"
-          content="View your complete transaction history on SAMM DEX including swaps, liquidity operations, and approvals"
-        />
+      <Helmet prioritizeSeoTags>
+        <title>Transaction History | SAMM DEX — Your DeFi Activity on RiseChain</title>
+        <meta name="description" content="View your complete transaction history on SAMM DEX including token swaps, liquidity additions, removals, and contract approvals on RiseChain." />
+        <link rel="canonical" href="https://samm.one/history" />
+        <meta name="robots" content="noindex, nofollow" />
+        <meta property="og:title" content="Transaction History | SAMM DEX" />
+        <meta property="og:description" content="View your complete DeFi transaction history on SAMM DEX on RiseChain." />
+        <meta property="og:url" content="https://samm.one/history" />
       </Helmet>
 
       <div className="relative min-h-screen">

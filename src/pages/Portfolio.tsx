@@ -28,12 +28,14 @@ const Portfolio = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Portfolio - SAMM DEX</title>
-        <meta
-          name="description"
-          content="View your complete portfolio including token balances and LP positions on SAMM DEX"
-        />
+      <Helmet prioritizeSeoTags>
+        <title>Portfolio | SAMM DEX — Track Your DeFi Assets on RiseChain</title>
+        <meta name="description" content="Track your complete DeFi portfolio on SAMM DEX. View token balances, LP positions, and total portfolio value across all your assets on RiseChain. Connect your wallet to get started." />
+        <link rel="canonical" href="https://samm.one/portfolio" />
+        <meta name="robots" content="noindex, nofollow" />
+        <meta property="og:title" content="Portfolio | SAMM DEX" />
+        <meta property="og:description" content="Track your token balances and LP positions on SAMM DEX." />
+        <meta property="og:url" content="https://samm.one/portfolio" />
       </Helmet>
 
       <div className="relative min-h-screen">

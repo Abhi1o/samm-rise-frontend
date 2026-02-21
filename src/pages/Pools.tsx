@@ -290,12 +290,24 @@ const Pools = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Liquidity Pools - SAMM</title>
-        <meta
-          name="description"
-          content="Add liquidity to SAMM pools and earn trading fees. Explore high-yield liquidity pools on Ethereum, Arbitrum, Optimism, and more."
-        />
+      <Helmet prioritizeSeoTags>
+        <title>Liquidity Pools | SAMM DEX — Earn Trading Fees on RiseChain</title>
+        <meta name="description" content="Explore and provide liquidity to SAMM pools on RiseChain. Earn trading fees by depositing into USDC, USDT, WETH, and DAI pairs using the Dynamically Sharded AMM algorithm. Low fees, minimal slippage." />
+        <link rel="canonical" href="https://samm.one/pools" />
+        <meta property="og:title" content="Liquidity Pools | SAMM DEX — Earn Trading Fees on RiseChain" />
+        <meta property="og:description" content="Provide liquidity and earn trading fees on SAMM DEX pools powered by RiseChain GigaGas throughput and the Sharded AMM algorithm." />
+        <meta property="og:url" content="https://samm.one/pools" />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:title" content="Liquidity Pools | SAMM DEX" />
+        <meta name="twitter:description" content="Provide liquidity and earn trading fees on SAMM DEX pools on RiseChain." />
+        <script type="application/ld+json">{`{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://samm.one/" },
+            { "@type": "ListItem", "position": 2, "name": "Liquidity Pools", "item": "https://samm.one/pools" }
+          ]
+        }`}</script>
       </Helmet>
 
       <div className="relative min-h-screen">

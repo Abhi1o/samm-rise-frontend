@@ -3,22 +3,130 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SAMM DEX - Stable AMM on RiseChain</title>
-    <meta name="description" content="Experience next-generation decentralized trading with SAMM DEX. Revolutionary Stable AMM with minimal slippage and maximum efficiency on RiseChain testnet." />
+
+    <!-- Primary SEO -->
+    <title>SAMM DEX | Sharded AMM — Decentralized Exchange on RiseChain</title>
+    <meta name="description" content="Trade crypto with ultra-low slippage on SAMM, the first Dynamically Sharded AMM built on RiseChain. Swap tokens, provide liquidity, and earn trading fees at GigaGas speed." />
     <meta name="author" content="SAMM DEX" />
-    <meta name="keywords" content="DEX, decentralized exchange, crypto swap, DeFi, AMM, liquidity, RiseChain, SAMM, Stable AMM" />
+    <meta name="keywords" content="SAMM, DEX, decentralized exchange, DeFi, AMM, sharded AMM, RiseChain, swap crypto, liquidity pools, yield farming, Web3 trading, SAMM DEX, token swap, GigaGas" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <meta property="og:title" content="SAMM DEX - Trade on RiseChain Testnet" />
-    <meta property="og:description" content="Experience next-generation decentralized trading with SAMM DEX. Revolutionary Stable AMM with minimal slippage on RiseChain." />
+    <!-- Canonical -->
+    <link rel="canonical" href="https://samm.one" />
+
+    <!-- Open Graph / Social Sharing (Facebook, LinkedIn, Discord, Telegram, WhatsApp) -->
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/samm-dex-og-image.png" />
+    <meta property="og:site_name" content="SAMM DEX" />
+    <meta property="og:title" content="SAMM DEX | Trade on RiseChain with GigaGas Speed" />
+    <meta property="og:description" content="The first Dynamically Sharded AMM. Swap tokens, earn liquidity fees, and trade with minimal slippage on SAMM DEX — powered by RiseChain." />
+    <meta property="og:url" content="https://samm.one" />
+    <meta property="og:image" content="https://samm.one/samm-dex-og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SAMM DEX — The First Sharded AMM on RiseChain" />
+    <meta property="og:locale" content="en_US" />
 
+    <!-- Twitter / X Cards -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@SAMMDEX" />
-    <meta name="twitter:image" content="/samm-dex-og-image.png" />
-    
-    <!-- Update canonical URL with your production domain -->
-    <!-- <link rel="canonical" href="https://your-domain.com" /> -->
+    <meta name="twitter:creator" content="@SAMMDEX" />
+    <meta name="twitter:title" content="SAMM DEX | Sharded AMM on RiseChain" />
+    <meta name="twitter:description" content="The first Dynamically Sharded AMM. Swap tokens and earn yield at GigaGas speed on RiseChain." />
+    <meta name="twitter:image" content="https://samm.one/samm-dex-og-image.png" />
+    <meta name="twitter:image:alt" content="SAMM DEX — Sharded AMM on RiseChain" />
+
+    <!-- PWA / Mobile -->
+    <meta name="theme-color" content="#f97316" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SAMM DEX" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="SAMM DEX" />
+
+    <!-- Favicons & Manifest -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Performance: DNS Prefetch & Preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="dns-prefetch" href="https://testnet.riselabs.xyz" />
+    <link rel="dns-prefetch" href="https://explorer.testnet.riselabs.xyz" />
+
+    <!-- JSON-LD Structured Data: WebApplication + Organization -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://samm.one/#webapp",
+          "name": "SAMM DEX",
+          "alternateName": ["Sharded AMM", "SAMM"],
+          "url": "https://samm.one",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web Browser",
+          "description": "SAMM is the first Dynamically Sharded Automated Market Maker (AMM) on RiseChain. Swap tokens, provide liquidity, and earn trading fees with ultra-low slippage.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free to use DeFi protocol — on-chain gas fees apply"
+          },
+          "featureList": [
+            "Token Swap",
+            "Liquidity Pool Management",
+            "Multi-hop Routing",
+            "Portfolio Tracking",
+            "Transaction History",
+            "Dynamically Sharded AMM Algorithm",
+            "RiseChain Integration"
+          ],
+          "screenshot": "https://samm.one/samm-dex-og-image.png",
+          "provider": {
+            "@id": "https://samm.one/#organization"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://samm.one/#organization",
+          "name": "SAMM DEX",
+          "url": "https://samm.one",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://samm.one/android-chrome-512x512.png",
+            "width": 512,
+            "height": 512
+          },
+          "description": "Builders of the first Dynamically Sharded AMM protocol on RiseChain.",
+          "sameAs": [
+            "https://twitter.com/SAMMDEX"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://samm.one/#website",
+          "url": "https://samm.one",
+          "name": "SAMM DEX",
+          "description": "The First Dynamically Sharded AMM — Decentralized Exchange on RiseChain",
+          "publisher": {
+            "@id": "https://samm.one/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://samm.one/pools?search={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
+    }
+    </script>
   </head>
 
   <body>

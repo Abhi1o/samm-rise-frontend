@@ -592,8 +592,8 @@ const EnhancedSwapCard = () => {
 
   return (
     <>
-      <div className="w-full max-w-[420px] mx-auto">
-        <div className="glass-card rounded-3xl p-5 md:p-6 metal-shine">
+      <div className="w-full max-w-[95vw] sm:max-w-[420px] mx-auto px-2 sm:px-0">
+        <div className="glass-card rounded-3xl p-4 sm:p-5 md:p-6 metal-shine">
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
