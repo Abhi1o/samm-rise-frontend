@@ -661,32 +661,32 @@ const EnhancedSwapCard = () => {
           {/* Price Info */}
           {quoteData && fromValue && (
             <div className="mt-4 p-3 rounded-xl bg-secondary/30 border border-border">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">Rate</span>
-                <span className="text-foreground font-mono text-xs">{getRate()}</span>
+              <div className="flex justify-between gap-2 text-sm mb-2">
+                <span className="text-muted-foreground flex-shrink-0">Rate</span>
+                <span className="text-foreground font-mono text-xs text-right min-w-0 break-all">{getRate()}</span>
               </div>
-              
+
               {/* Show shard info for direct swaps */}
               {quoteData.hops === 1 && quoteData.selectedShards && quoteData.selectedShards.length > 0 && (
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Shard</span>
-                  <span className="text-chrome font-mono text-xs">{quoteData.selectedShards[0].slice(0, 10)}...</span>
+                <div className="flex justify-between gap-2 text-sm mb-2">
+                  <span className="text-muted-foreground flex-shrink-0">Shard</span>
+                  <span className="text-chrome font-mono text-xs text-right">{quoteData.selectedShards[0].slice(0, 10)}...</span>
                 </div>
               )}
-              
+
               {/* Show hops for multi-hop swaps */}
               {quoteData.hops > 1 && quoteData.route && (
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Route</span>
-                  <span className="text-chrome font-mono text-xs">{quoteData.route.join(' → ')}</span>
+                <div className="flex justify-between gap-2 text-sm mb-2">
+                  <span className="text-muted-foreground flex-shrink-0">Route</span>
+                  <span className="text-chrome font-mono text-xs text-right min-w-0 break-all">{quoteData.route.join(' → ')}</span>
                 </div>
               )}
-              
+
               {/* Show total fee */}
               {quoteData.totalFee && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Fee</span>
-                  <span className="text-foreground font-mono text-xs">
+                <div className="flex justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground flex-shrink-0">Total Fee</span>
+                  <span className="text-foreground font-mono text-xs text-right">
                     {formatFee(quoteData.totalFee)} {fromToken.symbol}
                   </span>
                 </div>

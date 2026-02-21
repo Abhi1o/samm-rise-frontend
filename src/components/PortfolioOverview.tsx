@@ -40,7 +40,7 @@ export function PortfolioOverview({
               <div className="h-4 bg-muted rounded w-32 mb-4"></div>
               <div className="h-12 bg-muted rounded w-48"></div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               <div className="h-20 bg-muted rounded"></div>
               <div className="h-20 bg-muted rounded"></div>
               <div className="h-20 bg-muted rounded"></div>
@@ -58,13 +58,13 @@ export function PortfolioOverview({
           {/* Total Portfolio Value */}
           <div>
             <p className="text-sm text-muted-foreground mb-2">Total Portfolio Value</p>
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground">
               {formatUSD(totalValueUSD)}
             </h2>
           </div>
 
           {/* Breakdown Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             {/* Tokens Value */}
             <div className="flex items-start gap-3">
               <div className="p-2.5 rounded-lg bg-primary/10 text-primary">

@@ -27,11 +27,11 @@ const TokenInput = ({
 }: TokenInputProps) => {
   return (
     <div className="token-input group hover:border-chrome-dark transition-colors">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="flex justify-between items-center mb-2 gap-2">
+        <span className="text-sm text-muted-foreground flex-shrink-0">{label}</span>
         {token.balance && (
-          <span className="text-sm text-muted-foreground">
-            Balance: <span className="text-chrome">{token.balance}</span>
+          <span className="text-sm text-muted-foreground min-w-0 overflow-hidden text-right">
+            Balance: <span className="text-chrome truncate inline-block max-w-[120px] sm:max-w-none align-bottom">{token.balance}</span>
           </span>
         )}
       </div>

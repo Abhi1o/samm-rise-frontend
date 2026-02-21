@@ -304,12 +304,12 @@ const Pools = () => {
           <div className="container mx-auto px-4">
             {/* Hero Section */}
             <div className="mb-12">
-              <h1 className="text-4xl md:text-5xl font-bold mb-4 animate-fade-in">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 animate-fade-in">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-orange-light to-primary">
                   Earn from LP
                 </span>
               </h1>
-              <p className="text-xl text-muted-foreground mb-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+              <p className="text-base sm:text-xl text-muted-foreground mb-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
                 Liquidity Pools & Farms
               </p>
               <div className="flex gap-4 animate-fade-in" style={{ animationDelay: "0.2s" }}>
@@ -320,11 +320,11 @@ const Pools = () => {
             </div>
 
             {/* Tabs and Actions */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-              <div className="flex gap-2">
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setActiveTab("all")}
-                  className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
+                  className={`px-5 py-2.5 rounded-xl font-medium transition-all ${
                     activeTab === "all"
                       ? "bg-primary text-primary-foreground"
                       : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
@@ -334,7 +334,7 @@ const Pools = () => {
                 </button>
                 <button
                   onClick={() => setActiveTab("my")}
-                  className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
+                  className={`px-5 py-2.5 rounded-xl font-medium transition-all ${
                     activeTab === "my"
                       ? "bg-primary text-primary-foreground"
                       : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
@@ -343,7 +343,7 @@ const Pools = () => {
                   My Positions
                 </button>
                 {/* Search */}
-                <div className="relative flex-1 max-w-md">
+                <div className="relative flex-1 min-w-[180px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     placeholder="Search pools..."
@@ -353,11 +353,11 @@ const Pools = () => {
                   />
                 </div>
               </div>
-              <div className="flex gap-3">
-                <Button variant="outline" size="lg"className="rounded-xl" onClick={() => setCreatePoolOpen(true)}>
+              <div className="flex flex-wrap gap-2 sm:gap-3 md:justify-end">
+                <Button variant="outline" size="lg" className="rounded-xl flex-1 sm:flex-none" onClick={() => setCreatePoolOpen(true)}>
                   Create Pool
                 </Button>
-                <Button variant="swap" size="lg" className="rounded-xl" onClick={() => setAddLiquidityOpen(true)}>
+                <Button variant="swap" size="lg" className="rounded-xl flex-1 sm:flex-none" onClick={() => setAddLiquidityOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
                   Add Liquidity
                 </Button>
@@ -370,7 +370,7 @@ const Pools = () => {
             <div className="glass-card rounded-2xl border border-glass-border overflow-hidden ">
               {/* Table Header - Different for All Pools vs My Positions */}
               {activeTab === "all" ? (
-                <div className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
+                <div className="hidden md:grid grid-cols-10 gap-4 px-6 py-4 border-b border-border text-sm text-muted-foreground font-medium">
                   <div className="col-span-3">ALL POOLS</div>
                   <div className="col-span-1">FEE TIER</div>
                   <div className="col-span-4">TVL ↓</div>
@@ -428,9 +428,50 @@ const Pools = () => {
                   {/* Pools List */}
                   {!isLoading && !error && filteredPools.map((pool, index) => (
                   <>
+                    {/* Mobile Card - visible on small screens only */}
+                    <div
+                      className="md:hidden px-4 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors cursor-pointer animate-fade-in"
+                      style={{ animationDelay: `${index * 0.05}s` }}
+                      onClick={() => toggleExpand(pool.id, pool.address, pool.token0, pool.token1)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpand(pool.id, pool.address, pool.token0, pool.token1); }}
+                            className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                          >
+                            {expandedPoolId === pool.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                          <div className="flex -space-x-2 flex-shrink-0">
+                            <TokenLogo symbol={pool.token0} logoURI={pool.token0LogoURI} icon={pool.token0Icon} size="sm" className="border-2 border-background" />
+                            <TokenLogo symbol={pool.token1} logoURI={pool.token1LogoURI} icon={pool.token1Icon} size="sm" className="border-2 border-background" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm">{pool.token0} / {pool.token1}</p>
+                            <p className="text-xs text-muted-foreground">{pool.network}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="text-right">
+                            <p className="text-sm font-medium">{pool.tvl}</p>
+                            <p className="text-xs text-muted-foreground">TVL</p>
+                          </div>
+                          <button
+                            className="p-1.5 hover:bg-secondary/50 rounded-lg transition-colors"
+                            onClick={(e) => { e.stopPropagation(); window.open(`https://explorer.testnet.riselabs.xyz/address/${pool.address}`, '_blank'); }}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 ml-8">
+                        <span className="px-2 py-0.5 rounded bg-secondary/50 text-xs">{pool.type} | {pool.feeTier}</span>
+                      </div>
+                    </div>
+                    {/* Desktop Row - hidden on mobile */}
                     <div
                       key={pool.id}
-                      className="grid grid-cols-10 gap-4 px-6 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors items-center animate-fade-in cursor-pointer"
+                      className="hidden md:grid grid-cols-10 gap-4 px-6 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors items-center animate-fade-in cursor-pointer"
                       style={{ animationDelay: `${index * 0.05}s` }}
                       onClick={() => toggleExpand(pool.id, pool.address, pool.token0, pool.token1)}
                     >
@@ -489,9 +530,9 @@ const Pools = () => {
                       </div>
                     </div>
 
-                    {/* Expanded Row */}
+                    {/* Expanded Row - visible on all screen sizes */}
                     {expandedPoolId === pool.id && (
-                      <div className="border-b border-border/50 bg-muted/20 px-6 py-4">
+                      <div className="border-b border-border/50 bg-muted/20 px-4 sm:px-6 py-4">
                         <div className="max-w-5xl">
                           {poolDetails[pool.id]?.loading && (
                             <div className="flex items-center justify-center py-8">
@@ -527,7 +568,7 @@ const Pools = () => {
                               </div>
 
                               {/* Reserves - Compact Grid */}
-                              <div className="grid grid-cols-3 gap-3 text-sm">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                                 <div>
                                   <p className="text-xs text-muted-foreground mb-1">{pool.token0} Reserve</p>
                                   <p className="font-semibold">{poolDetails[pool.id].reserves.reserveA}</p>
@@ -554,7 +595,7 @@ const Pools = () => {
                               {poolDetails[pool.id].sammParams.beta1 !== 'N/A' && (
                                 <div>
                                   <p className="text-xs text-muted-foreground mb-2">SAMM Parameters</p>
-                                  <div className="grid grid-cols-4 gap-2 text-xs">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                                     <div>
                                       <span className="text-muted-foreground">Beta1: </span>
                                       <span className="font-mono">{poolDetails[pool.id].sammParams.beta1}</span>
@@ -647,9 +688,9 @@ const Pools = () => {
                             className="px-6 py-6 border-b border-border/50 hover:bg-secondary/20 transition-colors animate-fade-in"
                             style={{ animationDelay: `${index * 0.05}s` }}
                           >
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="flex -space-x-2">
+                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex -space-x-2 flex-shrink-0">
                                   <TokenLogo
                                     symbol={position.token0Symbol}
                                     logoURI={token0?.logoURI}
@@ -688,7 +729,7 @@ const Pools = () => {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-4 gap-4 text-sm">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                               <div>
                                 <p className="text-muted-foreground mb-1">LP Tokens</p>
                                 <p className="font-semibold">{position.lpBalanceFormatted}</p>

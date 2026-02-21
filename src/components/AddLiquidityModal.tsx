@@ -723,7 +723,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
           {/* Pool Info */}
           {selectedPool && poolInfo && (
             <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground mb-1">Pool Reserves</p>
                   <p className="font-semibold">
@@ -735,7 +735,7 @@ const AddLiquidityModal = ({ isOpen, onClose }: AddLiquidityModalProps) => {
                 </div>
                 <div>
                   <p className="text-muted-foreground mb-1">Current Price</p>
-                  <p className="font-semibold">
+                  <p className="font-semibold break-words">
                     1 {selectedToken0?.symbol} = {formatDisplayNumber(poolInfo.price, 6)} {selectedToken1?.symbol}
                   </p>
                 </div>

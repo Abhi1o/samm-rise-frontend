@@ -43,7 +43,7 @@ const Portfolio = () => {
           <div className="container mx-auto px-4">
             {/* Page Header */}
             <div className="mb-8">
-              <h1 className="text-4xl font-bold mb-2">Portfolio</h1>
+              <h1 className="text-3xl sm:text-4xl font-bold mb-2">Portfolio</h1>
               <p className="text-muted-foreground">
                 Track your token balances and liquidity positions
               </p>
@@ -51,11 +51,11 @@ const Portfolio = () => {
 
             {!isConnected ? (
               /* Not Connected State */
-              <div className="glass-card border-glass-border rounded-lg p-12 text-center">
-                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mb-6">
-                  <span className="text-5xl">👛</span>
+              <div className="glass-card border-glass-border rounded-lg p-8 sm:p-12 text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 mb-6">
+                  <span className="text-4xl sm:text-5xl">👛</span>
                 </div>
-                <h2 className="text-2xl font-bold mb-3">Connect Your Wallet</h2>
+                <h2 className="text-xl sm:text-2xl font-bold mb-3">Connect Your Wallet</h2>
                 <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                   Connect your wallet to view your portfolio, including token balances and liquidity
                   positions
@@ -76,7 +76,7 @@ const Portfolio = () => {
                 />
 
                 {/* Tabs */}
-                <div className="flex items-center gap-4 border-b border-glass-border">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4 border-b border-glass-border">
                   <button
                     onClick={() => setActiveTab('tokens')}
                     className={`pb-3 px-4 text-sm font-medium transition-colors border-b-2 ${
