@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle, TriangleAlert } from "lucide-react";
 import { useAccount, useChainId } from "wagmi";
 import { Address, formatUnits } from "viem";
 import TokenInput from "./TokenInput";
@@ -15,6 +15,7 @@ import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenPrice } from "@/hooks/useTokenPrice";
 import { Token as ConfigToken } from "@/types/tokens";
 import { formatUSD } from "@/utils/formatters";
+import { QUOTE_DEBOUNCE_DELAY, PRICE_IMPACT_WARNING, PRICE_IMPACT_CRITICAL } from "@/utils/constants";
 
 const EnhancedSwapCard = () => {
   const { toast } = useToast();
@@ -30,6 +31,7 @@ const EnhancedSwapCard = () => {
   const [loading, setLoading] = useState(false);
   const [quoteData, setQuoteData] = useState<any>(null);
   const [routeInfo, setRouteInfo] = useState<string>("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Get tokens for selected network
   const networkTokens = selectedNetwork ? commonTokens[selectedNetwork.chainId] || [] : [];
@@ -147,16 +149,57 @@ const EnhancedSwapCard = () => {
     }
   }, [selectedNetwork]);
 
-  // Fetch quote when amount changes
+  // Fetch quote when amount changes (debounced)
   useEffect(() => {
-    if (fromValue && parseFloat(fromValue) > 0 && fromToken.address && toToken.address) {
-      fetchQuote();
-    } else {
+    // Clear any pending debounce
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // Validate input amount exists and is positive
+    if (!fromValue || parseFloat(fromValue) <= 0) {
       setToValue("");
       setQuoteData(null);
       setRouteInfo("");
+      return;
     }
-  }, [fromValue, fromToken.address, toToken.address]);
+
+    // Validate token addresses exist
+    if (!fromToken.address || !toToken.address) {
+      setToValue("");
+      setQuoteData(null);
+      setRouteInfo("");
+      return;
+    }
+
+    // Wait for balance to load before validating
+    if (fromBalanceLoading) {
+      setToValue("");
+      setQuoteData(null);
+      setRouteInfo("");
+      return;
+    }
+
+    // Validate user has sufficient balance BEFORE fetching quote
+    const inputAmount = parseFloat(fromValue);
+    const userBalance = parseFloat(fromToken.balance);
+
+    if (inputAmount > userBalance) {
+      // Don't fetch quote if insufficient balance — button UI already shows the error
+      setToValue("");
+      setQuoteData(null);
+      setRouteInfo("");
+      return;
+    }
+
+    // All validations passed — debounce the fetch
+    debounceRef.current = setTimeout(() => {
+      fetchQuote();
+    }, QUOTE_DEBOUNCE_DELAY);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [fromValue, fromToken.address, toToken.address, fromToken.balance, fromBalanceLoading]);
+
 
   // Refresh balances when swap succeeds (but don't auto-reset, let user click "Done")
   useEffect(() => {
@@ -520,6 +563,15 @@ const EnhancedSwapCard = () => {
     return `1 ${fromToken.symbol} = ${rate.toFixed(6)} ${toToken.symbol}`;
   };
 
+  // Price impact: how much worse the swap rate is vs the market price
+  const priceImpact = useMemo(() => {
+    if (!fromValue || !toValue || !fromPrice || !toPrice) return null;
+    const inputUSD = parseFloat(fromValue) * fromPrice;
+    const outputUSD = parseFloat(toValue) * toPrice;
+    if (inputUSD === 0) return null;
+    return ((inputUSD - outputUSD) / inputUSD) * 100;
+  }, [fromValue, toValue, fromPrice, toPrice]);
+
   /**
    * Handle swap execution
    * Two-step process: approve token (if needed) → execute swap
@@ -553,10 +605,19 @@ const EnhancedSwapCard = () => {
     }
   };
 
+  // Check if user has insufficient balance
+  const isInsufficientBalance =
+    !!fromValue &&
+    parseFloat(fromValue) > 0 &&
+    !fromBalanceLoading &&
+    parseFloat(fromToken.balance) >= 0 &&
+    parseFloat(fromValue) > parseFloat(fromToken.balance);
+
   // Get button text based on current state
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!fromValue) return "Enter an amount";
+    if (isInsufficientBalance) return `Insufficient ${fromToken.symbol} Balance`;
     if (loading) return "Fetching quote...";
     if (!toValue) return "Enter an amount";
 
@@ -586,6 +647,7 @@ const EnhancedSwapCard = () => {
   const isButtonDisabled =
     !isConnected ||
     !fromValue ||
+    isInsufficientBalance ||
     (!toValue && !loading) ||  // Allow button to show "Fetching quote..." when loading
     batchSwap.isLoading ||
     batchSwap.currentStep === 'success';
@@ -604,9 +666,9 @@ const EnhancedSwapCard = () => {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 onClick={fetchQuote}
-                disabled={loading || !fromValue}
+                disabled={loading || !fromValue || isInsufficientBalance}
                 className="p-2 rounded-xl hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
               >
                 <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
@@ -624,6 +686,8 @@ const EnhancedSwapCard = () => {
             value={fromValue}
             onChange={setFromValue}
             usdValue={fromValueUSD}
+            isInsufficient={isInsufficientBalance}
+            onMax={() => setFromValue(fromToken.balance || "")}
             onTokenClick={() => openTokenModal("from")}
           />
 
@@ -641,10 +705,11 @@ const EnhancedSwapCard = () => {
           <TokenInput
             label="You receive"
             token={toToken}
-            value={loading ? "Loading..." : toValue}
+            value={toValue}
             onChange={setToValue}
             usdValue={toValueUSD}
             isOutput
+            isLoading={loading}
             onTokenClick={() => openTokenModal("to")}
           />
 
@@ -684,13 +749,50 @@ const EnhancedSwapCard = () => {
 
               {/* Show total fee */}
               {quoteData.totalFee && (
-                <div className="flex justify-between gap-2 text-sm">
+                <div className="flex justify-between gap-2 text-sm mb-2">
                   <span className="text-muted-foreground flex-shrink-0">Total Fee</span>
                   <span className="text-foreground font-mono text-xs text-right">
                     {formatFee(quoteData.totalFee)} {fromToken.symbol}
                   </span>
                 </div>
               )}
+
+              {/* Price impact */}
+              {priceImpact !== null && priceImpact > 0.1 && (
+                <div className="flex justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground flex-shrink-0">Price Impact</span>
+                  <span
+                    className={`font-mono text-xs text-right font-semibold ${
+                      priceImpact >= PRICE_IMPACT_CRITICAL
+                        ? "text-destructive"
+                        : priceImpact >= PRICE_IMPACT_WARNING
+                        ? "text-yellow-500"
+                        : "text-green-500"
+                    }`}
+                  >
+                    {priceImpact >= PRICE_IMPACT_CRITICAL ? "⚠ " : ""}
+                    {priceImpact.toFixed(2)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* High price impact banner */}
+          {priceImpact !== null && priceImpact >= PRICE_IMPACT_WARNING && toValue && (
+            <div
+              className={`mt-3 p-2.5 rounded-lg border flex items-start gap-2 text-xs ${
+                priceImpact >= PRICE_IMPACT_CRITICAL
+                  ? "bg-destructive/10 border-destructive/30 text-destructive"
+                  : "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400"
+              }`}
+            >
+              <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>
+                {priceImpact >= PRICE_IMPACT_CRITICAL
+                  ? `High price impact (${priceImpact.toFixed(2)}%). You may receive significantly less than market value.`
+                  : `Price impact (${priceImpact.toFixed(2)}%) is above average. Consider swapping a smaller amount.`}
+              </span>
             </div>
           )}
 

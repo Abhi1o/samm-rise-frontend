@@ -6,6 +6,8 @@ import { useSwapExecution } from './useSwapExecution';
 import { BatchSwapStep, ProgressStep, UseBatchSwapReturn } from '@/types/batch';
 import { Token } from '@/types/tokens';
 import { getCrossPoolRouter } from '@/config/contracts';
+import {parseError, isUserRejection} from '@/utils/errorParser';
+
 
 interface UseBatchSwapParams {
   fromToken?: Token;
@@ -143,9 +145,16 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
       setCurrentStep('success');
     } catch (err: any) {
       console.error('[useBatchSwap] Error:', err);
-      setError(err);
+      const ParsedError = parseError(err);
+      const friendlyError = new Error(ParsedError.description);
+      friendlyError.name = ParsedError.title;
+      setError(friendlyError);
       setCurrentStep('error');
-      throw err;
+
+      if (!isUserRejection(err  )){
+
+        throw friendlyError;
+      }
     }
   }, [
     address,

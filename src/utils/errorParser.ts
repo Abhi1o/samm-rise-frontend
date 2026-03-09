@@ -12,14 +12,14 @@ export interface ParsedError {
 /**
  * Parse contract errors into user-friendly messages with actionable steps
  */
-export function parseContractError(error: Error): ParsedError {
+export function parseError(error: any): ParsedError {
   const message = error.message.toLowerCase();
 
   // Insufficient ETH for gas
   if (message.includes('insufficient funds') || message.includes('insufficient balance for transfer')) {
     return {
-      title: 'Insufficient ETH for Gas',
-      description: 'You need at least 0.001 ETH to cover gas fees for pool creation.',
+      title: 'Insufficient token for Gas',
+      description: 'You need at least some gas fees for pool creation.',
       technicalDetails: error.message,
       actions: [
         { label: 'Get Testnet ETH', action: 'openRiseFaucet' },
@@ -78,6 +78,57 @@ export function parseContractError(error: Error): ParsedError {
     };
   }
 
+  // Slippage / price movement
+  if (
+    message.includes('slippage') ||
+    message.includes('price impact') ||
+    message.includes('exceeds max') ||
+    message.includes('amountoutmin') ||
+    message.includes('too little received') ||
+    message.includes('insufficient output amount')
+  ) {
+    return {
+      title: 'Slippage Exceeded',
+      description: 'The price moved too much before your transaction was confirmed. Try increasing slippage tolerance or swap a smaller amount.',
+      technicalDetails: error.message,
+      actions: [
+        { label: 'Try Again', action: 'retry' },
+        { label: 'Close', action: 'close', variant: 'outline' },
+      ],
+    };
+  }
+
+  // Insufficient liquidity in pool
+  if (
+    message.includes('insufficient liquidity') ||
+    message.includes('liquidity') ||
+    message.includes('k invariant') ||
+    message.includes('reserve')
+  ) {
+    return {
+      title: 'Insufficient Liquidity',
+      description: 'This pool doesn\'t have enough liquidity for your trade. Try a smaller amount or a different token pair.',
+      technicalDetails: error.message,
+      actions: [
+        { label: 'Try Again', action: 'retry' },
+        { label: 'Close', action: 'close', variant: 'outline' },
+      ],
+    };
+  }
+
+  // Token allowance too low
+  if (message.includes('allowance') || message.includes('not approved') || message.includes('transfer amount exceeds allowance')) {
+    return {
+      title: 'Approval Required',
+      description: 'Token spending approval is needed before swapping. Please approve and try again.',
+      technicalDetails: error.message,
+      actions: [
+        { label: 'Try Again', action: 'retry' },
+        { label: 'Close', action: 'close', variant: 'outline' },
+      ],
+    };
+  }
+
   // Generic contract revert
   if (message.includes('execution reverted') || message.includes('revert')) {
     return {
@@ -114,4 +165,39 @@ export function parseContractError(error: Error): ParsedError {
       { label: 'Close', action: 'close', variant: 'outline' },
     ],
   };
+}
+
+/**
+ * Check if error is user rejection (don't show error toast for these)
+ */
+export function isUserRejection(error: any): boolean {
+  if (!error) return false;
+  const errorString = (error.message || error.toString()).toLowerCase();
+  return (
+    errorString.includes('user rejected') ||
+    errorString.includes('user denied') ||
+    errorString.includes('user cancelled') ||
+    errorString.includes('rejected the request')
+  );
+}
+
+/**
+ * Format error for toast notification
+ */
+export function formatErrorForToast(error: any) {
+  const parsed = parseError(error);
+  
+  return {
+    title: parsed.title,
+    description: parsed.description,
+    variant: 'destructive' as const,
+  };
+}
+
+/**
+ * Get short error message for inline display
+ */
+export function getShortErrorMessage(error: any): string {
+  const parsed = parseError(error);
+  return parsed.description;
 }

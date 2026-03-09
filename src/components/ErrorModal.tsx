@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { XCircle, AlertTriangle } from "lucide-react";
-import { parseContractError } from "@/utils/errorParser";
+import { parseError } from "@/utils/errorParser";
 import { useNavigate } from "react-router-dom";
 
 interface ErrorModalProps {
@@ -25,7 +25,7 @@ export function ErrorModal({
 
   if (!error) return null;
 
-  const parsedError = parseContractError(error);
+  const parsedError = parseError(error);
 
   const handleAction = (action: string) => {
     switch (action) {
