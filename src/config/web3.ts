@@ -1,5 +1,12 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { http } from 'viem';
+import { connectorsForWallets } from '@rainbow-me/rainbowkit';
+import {
+  metaMaskWallet,
+  rainbowWallet,
+  walletConnectWallet,
+  coinbaseWallet,
+  injectedWallet,
+} from '@rainbow-me/rainbowkit/wallets';
+import { createConfig, http } from 'wagmi';
 import type { Chain } from 'viem';
 import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
 import { riseChain } from './chains';
@@ -70,11 +77,31 @@ function getProjectId(): string {
 
 /**
  * Wagmi configuration with RainbowKit
- * Uses getDefaultConfig which automatically includes MetaMask and other popular wallets
+ * Only includes EVM-compatible wallets that work with Rise Chain
  */
-export const wagmiConfig = getDefaultConfig({
-  appName: 'SAMM DEX',
-  projectId: getProjectId(),
+
+// Configure only Rise Chain-compatible wallets
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: 'Recommended',
+      wallets: [
+        metaMaskWallet,
+        rainbowWallet,
+        walletConnectWallet,
+        coinbaseWallet,
+        injectedWallet,
+      ],
+    },
+  ],
+  {
+    appName: 'SAMM DEX',
+    projectId: getProjectId(),
+  }
+);
+
+export const wagmiConfig = createConfig({
+  connectors,
   chains: chains,
   transports: {
     [riseChain.id]: http(getRpcUrl(riseChain)),

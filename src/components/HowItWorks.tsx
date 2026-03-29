@@ -5,34 +5,34 @@ const features = [
   {
     id: 1,
     icon: Orbit,
-    title: "Orbital AMM",
-    subtitle: "Multi-Dimensional Liquidity",
+    title: "Dynamic Sharding",
+    subtitle: "Horizontal Scaling",
     description:
-      "Our revolutionary AMM uses orbital mechanics to create dynamic liquidity pools that adapt to market conditions in real-time.",
+      "Horizontal scaling boosts AMM throughput without wasting liquidity.",
   },
   {
     id: 2,
     icon: Lock,
-    title: "Secure Swaps",
-    subtitle: "Zero-Knowledge Proofs",
+    title: "Fair Sequencing",
+    subtitle: "Batch Execution",
     description:
-      "Every transaction is secured with cutting-edge cryptographic proofs, ensuring your assets remain safe while maintaining privacy.",
+      "Batch execution cuts MEV, front-running, and sandwich risk.",
   },
   {
     id: 3,
     icon: Zap,
-    title: "Lightning Speed",
-    subtitle: "Sub-Second Execution",
+    title: "Marginal Price Optimization",
+    subtitle: "Cross-Shard Price Sync",
     description:
-      "Experience near-instant swaps with our optimized smart contracts, reducing gas costs and maximizing efficiency.",
+      "Cross-shard price sync keeps execution consistent.",
   },
   {
     id: 4,
     icon: TrendingUp,
-    title: "Capital Efficiency",
-    subtitle: "Concentrated Liquidity",
+    title: "Liquidity-Aware Fees",
+    subtitle: "Adaptive Incentives",
     description:
-      "Maximize your returns with concentrated liquidity positions that put your capital to work exactly where it's needed most.",
+      "Adaptive incentives rebalance liquidity and improve LP yield.",
   },
 ];
 
