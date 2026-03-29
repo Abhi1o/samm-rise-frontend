@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
-import { formatUnits } from 'viem';
 import { useTokenFaucet } from '@/hooks/useTokenFaucet';
+import { useFaucetTokens } from '@/hooks/useFaucetTokens';
 import { useAccount } from 'wagmi';
+import { commonTokens } from '@/config/tokens';
+import { riseChain } from '@/config/chains';
+import TokenLogo from '@/components/TokenLogo';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Droplets, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 
 interface TokenFaucetModalProps {
@@ -18,228 +17,214 @@ interface TokenFaucetModalProps {
   onClose: () => void;
 }
 
+// Build address → Token metadata map from the known token list
+const riseTokenMap = Object.fromEntries(
+  (commonTokens[riseChain.id] ?? []).map((t) => [t.address.toLowerCase(), t])
+);
+
 /**
- * Modal component for requesting test tokens from the faucet
+ * Human-friendly amount display.
+ * Handles dust amounts (< 0.001) without scientific notation.
  */
+const formatAmount = (raw: string): string => {
+  const num = parseFloat(raw);
+  if (!isFinite(num)) return '–';
+  if (num === 0) return '0';
+  if (num >= 1_000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (num >= 1)     return num.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  if (num >= 0.001) return num.toFixed(4).replace(/\.?0+$/, '');
+  if (num >= 0.000001) return num.toFixed(6).replace(/\.?0+$/, '');
+  // Truly tiny – show as dust indicator
+  return '< 0.000001';
+};
+
+const formatCountdown = (s: number): string => {
+  if (s <= 0) return 'Available now';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m ${sec}s`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+};
+
 export function TokenFaucetModal({ isOpen, onClose }: TokenFaucetModalProps) {
   const { isConnected } = useAccount();
+
   const {
     canRequest,
     timeUntilNext,
-    availableTokens,
-    cooldownPeriod,
     requestTokens,
-    isLoading,
     faucetState,
     isRequesting,
   } = useTokenFaucet();
 
-  // Debug: Log available tokens
-  useEffect(() => {
-    if (isOpen) {
-      console.log('TokenFaucetModal - availableTokens:', availableTokens);
-      console.log('TokenFaucetModal - isLoading:', isLoading);
-    }
-  }, [isOpen, availableTokens, isLoading]);
+  const { tokens, isLoading: isLoadingTokens } = useFaucetTokens();
 
   const [countdown, setCountdown] = useState<number>(0);
 
-  // Update countdown every second
   useEffect(() => {
-    if (timeUntilNext !== undefined) {
-      setCountdown(Number(timeUntilNext));
-    }
+    if (timeUntilNext !== undefined) setCountdown(Number(timeUntilNext));
   }, [timeUntilNext]);
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setInterval(() => {
-        setCountdown((prev) => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(timer);
-    }
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((p) => Math.max(0, p - 1)), 1000);
+    return () => clearInterval(t);
   }, [countdown]);
 
-  // Format countdown time
-  const formatCountdown = (seconds: number): string => {
-    if (seconds === 0) return 'Available now';
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+  const isSuccess  = faucetState === 'success';
+  const isCooldown = !canRequest && countdown > 0;
 
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  };
-
-  // Format cooldown period
-  const formatCooldownPeriod = (seconds: bigint): string => {
-    const hours = Number(seconds) / 3600;
-    if (hours >= 24) {
-      return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) > 1 ? 's' : ''}`;
-    }
-    return `${hours} hour${hours > 1 ? 's' : ''}`;
-  };
-
-  const handleRequest = () => {
-    requestTokens();
-  };
-
-  if (!isConnected) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Droplets className="h-5 w-5 text-blue-500" />
-              Token Faucet
-            </DialogTitle>
-            <DialogDescription>
-              Request test tokens for RiseChain Testnet
-            </DialogDescription>
-          </DialogHeader>
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Please connect your wallet to use the faucet
-            </AlertDescription>
-          </Alert>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  // Cooldown progress ring (1 h = 3600 s)
+  const radius       = 20;
+  const circumference = 2 * Math.PI * radius;
+  const elapsed      = isCooldown ? Math.max(0, 1 - countdown / 3600) : 1;
+  const dash         = elapsed * circumference;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Droplets className="h-5 w-5 text-blue-500" />
-            Token Faucet
-          </DialogTitle>
-          <DialogDescription>
-            Request test tokens for RiseChain Testnet
-            {cooldownPeriod && (
-              <span className="block mt-1 text-xs">
-                You can request tokens every {formatCooldownPeriod(cooldownPeriod)}
-              </span>
-            )}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-sm p-0 border-border bg-background overflow-hidden gap-0">
 
-        <div className="space-y-4">
-          {/* Available Tokens List */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        {/* ── Header ──────────────────────────────────────────────── */}
+        <div className="px-6 pt-6 pb-5 border-b border-border/60">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-primary/15 flex items-center justify-center orange-glow-subtle">
+              <Droplets className="w-5 h-5 text-primary" />
             </div>
-          ) : availableTokens && availableTokens.length > 0 ? (
-            (() => {
-              const activeTokens = availableTokens.filter((token) => token.isActive);
-              return activeTokens.length > 0 ? (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-muted-foreground">Available Tokens:</h4>
-                  <div className="space-y-2">
-                    {activeTokens.map((token) => (
-                      <div
-                        key={token.tokenAddress}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border"
-                      >
-                        <span className="font-medium">{token.symbol}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {formatUnits(token.amount, 18)} tokens
-                        </span>
-                      </div>
-                    ))}
+            <div>
+              <h2 className="font-bold text-base text-foreground leading-none">Test Token Faucet</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">RiseChain Testnet · 1d cooldown</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+
+          {/* ── Not connected ────────────────────────────────────── */}
+          {!isConnected && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/60 border border-border">
+              <AlertCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <p className="text-sm text-muted-foreground">Connect your wallet to claim tokens</p>
+            </div>
+          )}
+
+          {isConnected && (
+            <>
+              {/* ── Token Grid ────────────────────────────────────── */}
+              {isLoadingTokens ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              ) : tokens.length > 0 ? (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    You will receive
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {tokens.map((token) => {
+                      const meta = riseTokenMap[token.address.toLowerCase()];
+                      const amount = formatAmount(token.amountPerRequest);
+
+                      return (
+                        <div
+                          key={token.address}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-secondary/40 border border-border/60 hover:border-border transition-colors"
+                        >
+                          <TokenLogo
+                            symbol={token.symbol}
+                            logoURI={meta?.logoURI}
+                            icon={meta?.icon}
+                            size="md"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-foreground leading-none">{token.symbol}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{amount}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
-                <Alert className="border-yellow-500/50 bg-yellow-500/10">
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
-                  <AlertDescription className="text-yellow-500">
-                    Faucet is currently inactive. {availableTokens.length} token(s) configured but not active.
-                  </AlertDescription>
-                </Alert>
-              );
-            })()
-          ) : (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {availableTokens === undefined
-                  ? 'Loading faucet configuration...'
-                  : 'No tokens configured in faucet contract'}
-              </AlertDescription>
-            </Alert>
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/60 border border-border">
+                  <AlertCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground">No tokens available right now</p>
+                </div>
+              )}
+
+              {/* ── Cooldown Ring ─────────────────────────────────── */}
+              {isCooldown && (
+                <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-orange-500/8 border border-orange-500/20">
+                  <div className="relative flex-shrink-0 w-12 h-12">
+                    <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                      <circle
+                        cx="24" cy="24" r={radius}
+                        className="fill-none stroke-orange-500/20"
+                        strokeWidth="4"
+                      />
+                      <circle
+                        cx="24" cy="24" r={radius}
+                        className="fill-none stroke-orange-400"
+                        strokeWidth="4"
+                        strokeDasharray={`${dash} ${circumference}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <Clock className="absolute inset-0 m-auto w-4 h-4 text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-orange-400 font-medium">Cooldown active</p>
+                    <p className="text-sm font-mono font-bold text-foreground tabular-nums">
+                      {formatCountdown(countdown)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Success Banner ────────────────────────────────── */}
+              {isSuccess && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/25">
+                  <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+                  <p className="text-sm text-green-400 font-medium">Tokens received! Check your wallet.</p>
+                </div>
+              )}
+
+              {/* ── Claim Button ──────────────────────────────────── */}
+              <Button
+                onClick={requestTokens}
+                disabled={!canRequest || isRequesting || isSuccess || tokens.length === 0}
+                className="w-full h-11 font-semibold text-sm"
+                variant={canRequest && !isSuccess ? 'swap' : 'secondary'}
+                size="lg"
+              >
+                {isRequesting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {faucetState === 'requesting' ? 'Confirm in wallet…' : 'Processing…'}
+                  </>
+                ) : isSuccess ? (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Tokens Received!
+                  </>
+                ) : isCooldown ? (
+                  <>
+                    <Clock className="mr-2 h-4 w-4" />
+                    Cooldown Active
+                  </>
+                ) : (
+                  <>
+                    <Droplets className="mr-2 h-4 w-4" />
+                    Claim All Tokens
+                  </>
+                )}
+              </Button>
+            </>
           )}
 
-          {/* Cooldown Warning */}
-          {!canRequest && countdown > 0 && (
-            <Alert className="border-orange-500/50 bg-orange-500/10">
-              <Clock className="h-4 w-4 text-orange-500" />
-              <AlertDescription className="text-orange-500">
-                Cooldown active. Next request available in: {formatCountdown(countdown)}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Success Message */}
-          {faucetState === 'success' && (
-            <Alert className="border-green-500/50 bg-green-500/10">
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-              <AlertDescription className="text-green-500">
-                Tokens successfully received! Check your wallet.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Error Message */}
-          {faucetState === 'error' && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Failed to request tokens. Please try again.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Request Button */}
-          <Button
-            onClick={handleRequest}
-            disabled={!canRequest || isRequesting || !availableTokens || availableTokens.length === 0}
-            className="w-full"
-            size="lg"
-          >
-            {isRequesting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {faucetState === 'requesting' ? 'Signing...' : 'Confirming...'}
-              </>
-            ) : faucetState === 'success' ? (
-              <>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Tokens Received!
-              </>
-            ) : !canRequest && countdown > 0 ? (
-              <>
-                <Clock className="mr-2 h-4 w-4" />
-                Cooldown Active
-              </>
-            ) : (
-              <>
-                <Droplets className="mr-2 h-4 w-4" />
-                Request Tokens
-              </>
-            )}
-          </Button>
-
-          {/* Info Text */}
-          <p className="text-xs text-center text-muted-foreground">
-            Test tokens are only available on testnet networks and have no real value
+          <p className="text-center text-[11px] text-muted-foreground">
+            Test tokens have no real value · Testnet only
           </p>
         </div>
       </DialogContent>

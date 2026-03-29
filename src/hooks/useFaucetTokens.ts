@@ -1,18 +1,26 @@
 import { useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
 import { TokenFaucetABI, TOKEN_FAUCET_ADDRESS } from '@/config/abis/TokenFaucet';
+import { commonTokens } from '@/config/tokens';
 import { riseChain } from '@/config/chains';
 
 interface FaucetToken {
   address: string;
   symbol: string;
-  amountPerRequest: string; // Formatted amount
+  amountPerRequest: string; // Human-readable formatted amount
   decimals: number;
 }
 
+// Address → known decimals from our local token registry (source of truth)
+const decimalsMap: Record<string, number> = Object.fromEntries(
+  (commonTokens[riseChain.id] ?? []).map((t) => [t.address.toLowerCase(), t.decimals])
+);
+
 /**
- * Hook to fetch available tokens from the faucet contract
- * Shows what tokens and amounts users will receive
+ * Hook to fetch available tokens from the faucet contract.
+ * Uses TokenFaucetABI which correctly returns amountPerRequest for all tokens.
+ * Decimals are resolved from our local commonTokens registry (not the contract)
+ * to avoid ABI mismatch issues with the decimals field.
  */
 export function useFaucetTokens() {
   const { data: tokensData, isLoading, error } = useReadContract({
@@ -21,18 +29,22 @@ export function useFaucetTokens() {
     functionName: 'getAllTokens',
     chainId: riseChain.id,
     query: {
-      refetchInterval: 60000, // Refetch every minute
+      refetchInterval: 60000,
     },
   });
 
-  // Parse and format token data
   const tokens: FaucetToken[] = tokensData
-    ? tokensData.map((token: any) => ({
-        address: token.tokenAddress,
-        symbol: token.symbol,
-        amountPerRequest: formatUnits(token.amountPerRequest, token.decimals),
-        decimals: token.decimals,
-      }))
+    ? (tokensData as any[]).map((token) => {
+        const addr = (token.tokenAddress as string).toLowerCase();
+        // Use known decimals from config; fall back to 18 if unknown
+        const decimals = decimalsMap[addr] ?? 18;
+        return {
+          address: token.tokenAddress as string,
+          symbol: token.symbol as string,
+          amountPerRequest: formatUnits(token.amountPerRequest as bigint, decimals),
+          decimals,
+        };
+      })
     : [];
 
   return {

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Orbit, Lock, Zap, TrendingUp } from "lucide-react";
+import { Network, Shield, Sparkles, Coins } from "lucide-react";
 
 const features = [
   {
     id: 1,
-    icon: Orbit,
+    icon: Network,
     title: "Dynamic Sharding",
     subtitle: "Horizontal Scaling",
     description:
@@ -12,7 +12,7 @@ const features = [
   },
   {
     id: 2,
-    icon: Lock,
+    icon: Shield,
     title: "Fair Sequencing",
     subtitle: "Batch Execution",
     description:
@@ -20,7 +20,7 @@ const features = [
   },
   {
     id: 3,
-    icon: Zap,
+    icon: Sparkles,
     title: "Marginal Price Optimization",
     subtitle: "Cross-Shard Price Sync",
     description:
@@ -28,7 +28,7 @@ const features = [
   },
   {
     id: 4,
-    icon: TrendingUp,
+    icon: Coins,
     title: "Liquidity-Aware Fees",
     subtitle: "Adaptive Incentives",
     description:
@@ -78,7 +78,7 @@ const HowItWorks = () => {
         </div>
 
         {/* Feature Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10 md:mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 md:mb-12">
           {features.map((feature, index) => {
             const Icon = feature.icon;
             const isActive = feature.id === activeFeature;
@@ -87,50 +87,95 @@ const HowItWorks = () => {
               <button
                 key={feature.id}
                 onClick={() => setActiveFeature(feature.id)}
-                className={`feature-card text-left transition-all duration-300 ${
-                  isActive
-                    ? "border-primary/50 orange-glow-subtle"
-                    : "border-border hover:border-primary/20"
+                className={`group text-left transition-all duration-300 relative ${
+                  isActive ? "scale-105" : "hover:scale-102"
                 }`}
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-muted-foreground"
+                {/* Card container */}
+                <div className={`glass-card rounded-2xl p-5 transition-all duration-300 relative overflow-hidden ${
+                  isActive
+                    ? "border-primary/50 orange-glow-subtle"
+                    : "border-border hover:border-primary/30"
+                }`}>
+                  {/* Orange gradient background on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-orange-light/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl" />
+                  
+                  {/* Animated border glow */}
+                  <div className={`absolute inset-0 bg-gradient-to-br from-primary to-orange-light opacity-0 ${isActive ? 'opacity-10' : 'group-hover:opacity-10'} blur-xl transition-opacity duration-300 rounded-2xl`} />
+                  
+                  {/* Large number INSIDE the box, bottom-right corner with ultra-low opacity */}
+                  <div 
+                    className={`absolute -bottom-4 -right-3 text-[7rem] font-black leading-none pointer-events-none transition-all duration-500 select-none ${
+                      isActive 
+                        ? 'text-primary/[0.08]' 
+                        : 'text-foreground/[0.02] group-hover:text-primary/[0.04]'
                     }`}
+                    style={{
+                      fontFamily: 'Outfit, sans-serif',
+                      fontWeight: 900,
+                      textShadow: isActive 
+                        ? '0 0 40px hsla(24, 100%, 50%, 0.1)' 
+                        : 'none'
+                    }}
                   >
-                    <Icon className="w-5 h-5" />
+                    {feature.id}
                   </div>
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-mono transition-all duration-300 ${
-                      isActive
-                        ? "bg-primary/20 text-primary"
-                        : "bg-secondary text-muted-foreground"
-                    }`}
-                  >
-                    0{feature.id}
+                  
+                  <div className="relative z-10">
+                    {/* Icon */}
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center mb-3 transition-all duration-300 ${
+                        isActive
+                          ? "bg-gradient-to-br from-primary to-orange-light text-white shadow-lg"
+                          : "bg-secondary text-muted-foreground group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-orange-light group-hover:text-white"
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />
+                    </div>
+
+                    {/* Content */}
+                    <h3 className={`font-semibold text-sm mb-1 transition-colors duration-300 ${
+                      isActive ? 'text-foreground' : 'text-foreground group-hover:text-primary'
+                    }`}>
+                      {feature.title}
+                    </h3>
+                    <p className="text-xs text-muted-foreground transition-colors duration-300">
+                      {feature.subtitle}
+                    </p>
+
+                    {/* Mobile-only expanded description */}
+                    <div 
+                      className={`lg:hidden overflow-hidden transition-all duration-500 ease-in-out ${
+                        isActive ? 'max-h-40 opacity-100 mt-4' : 'max-h-0 opacity-0 mt-0'
+                      }`}
+                    >
+                      <div className="pt-3 border-t border-border/50">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {feature.description}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <h3 className="font-semibold text-foreground mb-1">{feature.title}</h3>
-                <p className="text-sm text-muted-foreground">{feature.subtitle}</p>
               </button>
             );
           })}
         </div>
 
-        {/* Active Feature Detail */}
+        {/* Active Feature Detail - Desktop/Tablet only */}
         {activeData && (
           <div 
             key={activeData.id}
-            className="glass-card rounded-2xl md:rounded-3xl p-6 md:p-8 max-w-3xl mx-auto"
+            className="hidden lg:block glass-card rounded-2xl md:rounded-3xl p-6 md:p-8 max-w-3xl mx-auto relative overflow-hidden"
           >
-            <div className="flex flex-col sm:flex-row items-start gap-4">
-              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-primary flex items-center justify-center orange-glow-subtle flex-shrink-0">
-                <activeData.icon className="w-6 h-6 md:w-7 md:h-7 text-primary-foreground" />
+            {/* Animated orange gradient background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-orange-light/5" />
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-primary to-orange-light opacity-10 blur-3xl rounded-full" />
+            
+            <div className="flex flex-col sm:flex-row items-start gap-4 relative z-10">
+              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-gradient-to-br from-primary to-orange-light flex items-center justify-center shadow-lg flex-shrink-0 animate-pulse-slow">
+                <activeData.icon className="w-6 h-6 md:w-7 md:h-7 text-white" />
               </div>
               <div>
                 <h3 className="text-xl md:text-2xl font-bold text-foreground mb-2">{activeData.title}</h3>

@@ -7,28 +7,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Droplet, Loader2, Clock, CheckCircle2 } from 'lucide-react';
+import { Droplets, Loader2, Clock, CheckCircle2 } from 'lucide-react';
 import { useFaucet } from '@/hooks/useFaucet';
-import { useFaucetTokens } from '@/hooks/useFaucetTokens';
-import { riseChain } from '@/config/chains';
+import { TokenFaucetModal } from './TokenFaucetModal';
 
-/**
- * FaucetButton Component
- *
- * Smart button that allows users to claim test tokens on RiseChain Testnet
- * Features:
- * - Only visible on RiseChain Testnet
- * - Shows cooldown timer when user can't claim
- * - Provides visual feedback for all states
- * - Automatically updates eligibility status
- */
 export const FaucetButton = () => {
   const { address } = useAccount();
   const chainId = useChainId();
+  const [modalOpen, setModalOpen] = useState(false);
   const [countdown, setCountdown] = useState<string>('');
 
   const {
-    requestTokens,
     canRequest,
     timeUntilNext,
     isPending,
@@ -37,116 +26,81 @@ export const FaucetButton = () => {
     formatTimeRemaining,
   } = useFaucet(address, chainId);
 
-  const { tokens, isLoading: isLoadingTokens } = useFaucetTokens();
-
-  // Update countdown display
   useEffect(() => {
     if (!canRequest && timeUntilNext > 0) {
       const interval = setInterval(() => {
         setCountdown(formatTimeRemaining());
       }, 1000);
-
       return () => clearInterval(interval);
     } else {
       setCountdown('');
     }
   }, [canRequest, timeUntilNext, formatTimeRemaining]);
 
-  // Don't show button if not on RiseChain or no wallet connected
-  if (!isEnabled || !address) {
-    return null;
-  }
+  if (!isEnabled || !address) return null;
 
-  // Get button state
   const getButtonState = () => {
     if (isPending) {
       return {
         icon: <Loader2 className="w-4 h-4 animate-spin" />,
         text: 'Claiming...',
         disabled: true,
-        variant: 'default' as const,
       };
     }
-
     if (isSuccess) {
       return {
         icon: <CheckCircle2 className="w-4 h-4" />,
         text: 'Claimed!',
         disabled: true,
-        variant: 'default' as const,
       };
     }
-
     if (!canRequest) {
       return {
         icon: <Clock className="w-4 h-4" />,
         text: countdown || 'Cooldown',
-        disabled: true,
-        variant: 'secondary' as const,
+        disabled: false, // still allow opening modal to see timer
       };
     }
-
     return {
-      icon: <Droplet className="w-4 h-4" />,
-      text: 'Get Test Tokens',
+      icon: <Droplets className="w-4 h-4" />,
+      text: 'Get Tokens',
       disabled: false,
-      variant: 'swap' as const,
     };
   };
 
   const buttonState = getButtonState();
 
-  // Tooltip content based on state
-  const getTooltipContent = () => {
-    if (!canRequest && timeUntilNext > 0) {
-      return `Cooldown active. You can claim again in ${countdown}`;
-    }
-
-    if (canRequest) {
-      if (isLoadingTokens || tokens.length === 0) {
-        return 'Claim free test tokens for SAMM DEX testing';
-      }
-
-      // Show actual token amounts from contract
-      const tokenList = tokens
-        .map(t => `${t.amountPerRequest} ${t.symbol}`)
-        .join(', ');
-
-      return `Claim test tokens: ${tokenList}`;
-    }
-
-    return 'Loading...';
-  };
+  const tooltipText = !canRequest && timeUntilNext > 0
+    ? `Next claim in ${countdown}`
+    : 'Claim free test tokens';
 
   return (
-    <TooltipProvider>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <Button
-            variant={buttonState.variant}
-            size="default"
-            onClick={requestTokens}
-            disabled={buttonState.disabled}
-            className="flex items-center gap-2 font-medium transition-all hover:scale-105 active:scale-95"
-          >
-            {buttonState.icon}
-            <span className="hidden sm:inline">{buttonState.text}</span>
-            {/* Mobile: Show only icon */}
-            <span className="sm:hidden">
-              {canRequest ? '💧' : '⏱️'}
-            </span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs">
-          <p className="text-sm">{getTooltipContent()}</p>
-          {canRequest && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Cooldown: 1 hour between claims
-            </p>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <>
+      <TooltipProvider>
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <Button
+              variant={canRequest ? 'swap' : 'secondary'}
+              size="default"
+              onClick={() => setModalOpen(true)}
+              disabled={buttonState.disabled}
+              className="flex items-center gap-2 font-medium transition-all hover:scale-105 active:scale-95"
+            >
+              {buttonState.icon}
+              <span className="hidden sm:inline">{buttonState.text}</span>
+              <span className="sm:hidden">
+                {canRequest ? <Droplets className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-sm">{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+
+      <TokenFaucetModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+    </>
   );
 };
 
