@@ -1,5 +1,4 @@
 import { useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
 import { TokenFaucetABI, TOKEN_FAUCET_ADDRESS } from '@/config/abis/TokenFaucet';
 import { commonTokens } from '@/config/tokens';
 import { riseChain } from '@/config/chains';
@@ -7,7 +6,7 @@ import { riseChain } from '@/config/chains';
 interface FaucetToken {
   address: string;
   symbol: string;
-  amountPerRequest: string; // Human-readable formatted amount
+  amountPerRequest: string; // Human-readable base amount (not in wei)
   decimals: number;
 }
 
@@ -19,6 +18,8 @@ const decimalsMap: Record<string, number> = Object.fromEntries(
 /**
  * Hook to fetch available tokens from the faucet contract.
  * Uses TokenFaucetABI which correctly returns amountPerRequest for all tokens.
+ * Note: amountPerRequest from the contract is a base amount (e.g., 1000 for 1000 USDC),
+ * not in wei units. The contract multiplies by 10^decimals when minting.
  * Decimals are resolved from our local commonTokens registry (not the contract)
  * to avoid ABI mismatch issues with the decimals field.
  */
@@ -34,14 +35,19 @@ export function useFaucetTokens() {
   });
 
   const tokens: FaucetToken[] = tokensData
-    ? (tokensData as any[]).map((token) => {
-        const addr = (token.tokenAddress as string).toLowerCase();
+    ? (tokensData as Array<{
+        tokenAddress: string;
+        symbol: string;
+        amountPerRequest: bigint;
+        decimals: number;
+      }>).map((token) => {
+        const addr = token.tokenAddress.toLowerCase();
         // Use known decimals from config; fall back to 18 if unknown
         const decimals = decimalsMap[addr] ?? 18;
         return {
-          address: token.tokenAddress as string,
-          symbol: token.symbol as string,
-          amountPerRequest: formatUnits(token.amountPerRequest as bigint, decimals),
+          address: token.tokenAddress,
+          symbol: token.symbol,
+          amountPerRequest: token.amountPerRequest.toString(),
           decimals,
         };
       })
