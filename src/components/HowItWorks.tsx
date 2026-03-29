@@ -62,7 +62,7 @@ const HowItWorks = () => {
             How <span className="text-primary">LiquidDEX</span> Works
           </h2>
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
-            Revolutionary <span className="text-primary">AMM mechanism</span> using orbital dynamics
+            Revolutionary <span className="text-primary">AMM mechanism</span> using adaptive dynamics
             and liquid metal efficiency for optimal capital utilization
           </p>
         </div>
