@@ -69,12 +69,12 @@ export const nativeTokens: Record<number, Token> = {
  * Common tokens by chain
  */
 export const commonTokens: Record<number, Token[]> = {
-  // RiseChain Testnet - Updated 2026-02-10
+  // RiseChain Testnet - Updated 2026-03-29
   [riseChain.id]: [
     {
       symbol: 'WETH',
       name: 'Wrapped Ether',
-      address: '0x0ec0b10b40832cD9805481F132f966B156d70Cc7',
+      address: '0x0234367975aCbcBe49867dD36bf37C7d05C2E743',
       decimals: 18,
       chainId: riseChain.id,
       icon: '⟠',
@@ -84,7 +84,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'WBTC',
       name: 'Wrapped Bitcoin',
-      address: '0xEf6c9F206Ad4333Ca049C874ae6956f849e71479',
+      address: '0xD35648Ad048e450aFd22f3421cE6A5EFFC40DC4D',
       decimals: 8,
       chainId: riseChain.id,
       icon: '₿',
@@ -94,7 +94,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'USDC',
       name: 'USD Coin',
-      address: '0xDA4aABea512d4030863652dbB21907B6eC97ad23',
+      address: '0x1B40c25A7cDF5b11c67dc956d6b63EEaE1C349B0',
       decimals: 6,
       chainId: riseChain.id,
       icon: '💲',
@@ -104,7 +104,7 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'USDT',
       name: 'Tether USD',
-      address: '0x89D668205724fbFBaAe1BDF32F0aA046f6bdD7Cd',
+      address: '0xa95558713D7E6D3F41bC70E867323A84404586f9',
       decimals: 6,
       chainId: riseChain.id,
       icon: '💵',
@@ -114,42 +114,12 @@ export const commonTokens: Record<number, Token[]> = {
     {
       symbol: 'DAI',
       name: 'Dai Stablecoin',
-      address: '0x9DcC3d09865292A2D5c39e08EEa583dd29390522',
+      address: '0x51A046A489da585eB5875845FdC7323c0f1F0606',
       decimals: 18,
       chainId: riseChain.id,
       icon: '◈',
       logoURI: 'https://assets.coingecko.com/coins/images/9956/standard/Badge_Dai.png',
       coingeckoId: 'dai',
-    },
-    {
-      symbol: 'LINK',
-      name: 'Chainlink',
-      address: '0xD4Afa6b83888aABbe74b288b4241F39Ad8A8e0bA',
-      decimals: 18,
-      chainId: riseChain.id,
-      icon: '⬡',
-      logoURI: 'https://assets.coingecko.com/coins/images/877/standard/chainlink-new-logo.png',
-      coingeckoId: 'chainlink',
-    },
-    {
-      symbol: 'UNI',
-      name: 'Uniswap',
-      address: '0xEebe649Cef7ed5b1fD4BE3222bA94f316eBdbE6c',
-      decimals: 18,
-      chainId: riseChain.id,
-      icon: '🦄',
-      logoURI: 'https://assets.coingecko.com/coins/images/12504/standard/uni.jpg',
-      coingeckoId: 'uniswap',
-    },
-    {
-      symbol: 'AAVE',
-      name: 'Aave',
-      address: '0x92EfA27dBb61069d4f65a656E1e9781509982ba7',
-      decimals: 18,
-      chainId: riseChain.id,
-      icon: '👻',
-      logoURI: 'https://assets.coingecko.com/coins/images/12645/standard/aave-token-round.png',
-      coingeckoId: 'aave',
     },
   ],
 

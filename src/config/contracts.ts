@@ -4,13 +4,14 @@ import { riseChain } from './chains';
 /**
  * Contract addresses by chain ID
  * These addresses are deployed on RiseChain Testnet
- * Updated: 2026-02-10
+ * Updated: 2026-03-29
  */
 export const CONTRACT_ADDRESSES = {
   [riseChain.id]: {
-    crossPoolRouter: '0x622c2D2719197A047f29BCBaaaEBBDbD54b45a11' as Address,
-    factory: '0x1114cF606d700bB8490C9D399500e35a31FaE27A' as Address,
-    tokenFaucet: '0x1758716f8ccb77B514d801eF00C690F6F5CFce84' as Address, // Updated Feb 10, 2026
+    crossPoolRouter: '0x6A45347a8DbC629000F725c544D695209b0c3d00' as Address,
+    factory: '0xc4c6ceABeBBfA1Bf9D219fE80F5b95982664fb94' as Address,
+    orchestrator: '0x93174f86F57A97827680c279e07704AbE2a0b0c0' as Address,
+    tokenFaucet: '0x42a930BF9259cE3D9e76bb1d8C61b52daf68dBE4' as Address, // Updated Mar 29, 2026
   },
 } as const;
 
@@ -43,6 +44,17 @@ export function getTokenFaucet(chainId: number): Address {
   const address = CONTRACT_ADDRESSES[chainId]?.tokenFaucet;
   if (!address) {
     throw new Error(`TokenFaucet not deployed on chain ${chainId}`);
+  }
+  return address;
+}
+
+/**
+ * Get Orchestrator address for a given chain
+ */
+export function getOrchestrator(chainId: number): Address {
+  const address = CONTRACT_ADDRESSES[chainId]?.orchestrator;
+  if (!address) {
+    throw new Error(`Orchestrator not deployed on chain ${chainId}`);
   }
   return address;
 }

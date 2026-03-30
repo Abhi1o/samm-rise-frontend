@@ -197,12 +197,48 @@ class SAMMApiService {
 
     const data = await response.json();
     
+    console.log('Raw backend response:', data);
+    
+    // CRITICAL FIX: Backend returns 'amountIn' not 'expectedAmountIn'
+    // Normalize the field names for frontend compatibility
+    if (data.amountIn && !data.expectedAmountIn) {
+      data.expectedAmountIn = data.amountIn;
+    }
+    
     // Transform backend response to include 'steps' format expected by frontend
-    // Backend returns 'shardsData', we need to convert it to 'steps'
-    if (data.shardsData && Array.isArray(data.shardsData)) {
+    // Backend returns 'hops', we need to convert it to 'steps' and 'shardsData'
+    if (data.hops && Array.isArray(data.hops)) {
       // Always fetch token list to get addresses and decimals
       const tokensResponse = await this.getTokens();
       const tokenMap = new Map(tokensResponse.tokens.map(t => [t.symbol, { address: t.address, decimals: t.decimals }]));
+      
+      // Save original hops array before transforming
+      const originalHops = data.hops;
+      
+      // Create shardsData from hops for compatibility
+      data.shardsData = originalHops.map((hop: any) => ({
+        address: hop.shardAddress,
+        tokenIn: hop.tokenIn,
+        tokenOut: hop.tokenOut,
+        tokenA: hop.tokenIn,
+        tokenB: hop.tokenOut,
+        reserveA: '0', // Not provided by backend
+        reserveB: '0', // Not provided by backend
+        liquidityUSD: 0,
+        fee: hop.fee,
+        priceImpact: hop.priceImpact
+      }));
+      
+      // Create selectedShards array
+      data.selectedShards = originalHops.map((hop: any) => hop.shardAddress);
+      
+      // Calculate totalFee from original hops array
+      if (!data.totalFee) {
+        data.totalFee = originalHops.reduce((sum: number, hop: any) => sum + parseFloat(hop.fee || '0'), 0).toString();
+      }
+      
+      // Set hops count (after calculating totalFee)
+      data.hops = originalHops.length;
       
       data.steps = data.shardsData.map((shard: any, index: number) => {
         // Get token info from map
@@ -251,12 +287,14 @@ class SAMMApiService {
       });
     }
     
-    // Also add amountIn to the response for easier access
+    // Ensure amountIn is set for easier access
     data.amountIn = data.expectedAmountIn;
     
     console.log('Transformed quote data:', {
       amountIn: data.amountIn,
       amountOut: data.amountOut,
+      expectedAmountIn: data.expectedAmountIn,
+      hops: data.hops,
       steps: data.steps?.map((s: any) => ({
         from: s.fromSymbol,
         to: s.toSymbol,

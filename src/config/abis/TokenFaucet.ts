@@ -64,6 +64,6 @@ export const TokenFaucetABI = [
 
 /**
  * TokenFaucet contract address on RiseChain Testnet
- * Updated 2026-02-12 - New faucet with correct token addresses
+ * Updated 2026-03-29 - New deployment with updated token addresses
  */
-export const TOKEN_FAUCET_ADDRESS = '0x1758716f8ccb77B514d801eF00C690F6F5CFce84' as const;
+export const TOKEN_FAUCET_ADDRESS = '0x42a930BF9259cE3D9e76bb1d8C61b52daf68dBE4' as const;

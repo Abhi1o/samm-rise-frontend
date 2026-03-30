@@ -386,81 +386,20 @@ const EnhancedSwapCard = () => {
         }
       }
       
-      // Step 2: Iteratively find the correct output amount
-      // The backend uses "exact output" mode, but we have "exact input"
-      // We need to find the output amount where backend's expectedAmountIn matches our input
+      // Step 2: Get exact quote from backend with single API call
+      // The pool reserve estimation above provides a good initial estimate
+      // The backend will calculate the exact quote based on actual pool reserves
+      console.log('Fetching quote with estimated output:', estimatedOut.toFixed(6), toToken.symbol);
       
-      let targetOutput = estimatedOut;
-      let iterations = 0;
-      const maxIterations = 5;
-      const tolerance = 0.01; // 1% tolerance
+      const quote = await sammApi.getSwapQuote(
+        fromToken.symbol,
+        toToken.symbol,
+        estimatedOut.toFixed(6)
+      );
       
-      console.log('Starting iterative quote search...');
-      console.log('  Target input:', amountInHuman, fromToken.symbol);
-      console.log('  Initial estimate:', targetOutput.toFixed(6), toToken.symbol);
-      
-      let quote;
-      let bestQuote = null;
-      let bestDiff = Infinity;
-      
-      while (iterations < maxIterations) {
-        // Get quote for current target output
-        quote = await sammApi.getSwapQuote(
-          fromToken.symbol,
-          toToken.symbol,
-          targetOutput.toFixed(6)
-        );
-        
-        const quotedInput = parseFloat(quote.expectedAmountIn);
-        const userInput = parseFloat(amountInHuman);
-        const diff = Math.abs(quotedInput - userInput);
-        const diffPercent = (diff / userInput) * 100;
-        
-        console.log(`  Iteration ${iterations + 1}:`, {
-          targetOutput: targetOutput.toFixed(6),
-          quotedInput: quotedInput.toFixed(6),
-          userInput: userInput.toFixed(6),
-          diff: diff.toFixed(6),
-          diffPercent: diffPercent.toFixed(2) + '%'
-        });
-        
-        // Track best quote
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestQuote = quote;
-        }
-        
-        // Check if we're close enough
-        if (diffPercent < tolerance) {
-          console.log('  ✅ Converged! Using this quote.');
-          break;
-        }
-        
-        // Adjust target output based on the difference
-        // If backend needs more input than user has, reduce output
-        // If backend needs less input than user has, increase output
-        const ratio = userInput / quotedInput;
-        targetOutput = targetOutput * ratio;
-        
-        // Safety check: don't let output go negative or too large
-        if (targetOutput <= 0 || targetOutput > estimatedOut * 10) {
-          console.log('  ⚠️  Target output out of bounds, using best quote so far');
-          quote = bestQuote;
-          break;
-        }
-        
-        iterations++;
-      }
-      
-      // Use the best quote we found
-      if (!quote && bestQuote) {
-        quote = bestQuote;
-      }
-      
-      console.log('Final quote:', {
+      console.log('Quote received:', {
         expectedInput: quote.expectedAmountIn,
-        output: quote.amountOut,
-        iterations
+        output: quote.amountOut
       });
 
       // Validate quote response
