@@ -95,7 +95,7 @@ const HeroSection = () => {
               className="animate-fade-in overflow-visible"
               style={{ animationDelay: "0.1s" }}
             >
-              <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-[4.5rem] font-bold leading-[1.3] tracking-tight overflow-visible">
+              <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-[4.5rem] font-bold leading-[1.4] tracking-tight overflow-visible">
                 <span className="block text-foreground/90 overflow-visible">Trade with</span>
                 <span
                   className="block text-transparent overflow-visible"
@@ -105,8 +105,9 @@ const HeroSection = () => {
                     WebkitBackgroundClip: "text",
                     backgroundClip: "text",
                     WebkitTextFillColor: "transparent",
-                    paddingBottom: "0.25rem",
-                    marginBottom: "-0.25rem",
+                    paddingBottom: "0.5rem",
+                    marginBottom: "-0.375rem",
+                    minHeight: "1.2em",
                   }}
                 >
                   GigaGas
