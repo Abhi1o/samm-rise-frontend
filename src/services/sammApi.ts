@@ -208,13 +208,13 @@ class SAMMApiService {
     // Transform backend response to include 'steps' format expected by frontend
     // Backend returns 'hops', we need to convert it to 'steps' and 'shardsData'
     if (data.hops && Array.isArray(data.hops)) {
-      // Always fetch token list to get addresses and decimals
+      // Always fetch token list to get addresses, decimals, and USD prices
       const tokensResponse = await this.getTokens();
-      const tokenMap = new Map(tokensResponse.tokens.map(t => [t.symbol, { address: t.address, decimals: t.decimals }]));
-      
+      const tokenMap = new Map(tokensResponse.tokens.map(t => [t.symbol, { address: t.address, decimals: t.decimals, price: t.price ?? 0 }]));
+
       // Save original hops array before transforming
       const originalHops = data.hops;
-      
+
       // Create shardsData from hops for compatibility
       data.shardsData = originalHops.map((hop: any) => ({
         address: hop.shardAddress,
@@ -228,15 +228,26 @@ class SAMMApiService {
         fee: hop.fee,
         priceImpact: hop.priceImpact
       }));
-      
+
       // Create selectedShards array
       data.selectedShards = originalHops.map((hop: any) => hop.shardAddress);
-      
-      // Calculate totalFee from original hops array
-      if (!data.totalFee) {
-        data.totalFee = originalHops.reduce((sum: number, hop: any) => sum + parseFloat(hop.fee || '0'), 0).toString();
-      }
-      
+
+      // Compute totalFeeUSD: each hop's fee is in that hop's tokenIn, so convert each to USD.
+      // This is the only correct way to sum fees across hops that use different tokens.
+      const totalFeeUSD = originalHops.reduce((sum: number, hop: any) => {
+        const info = tokenMap.get(hop.tokenIn);
+        const price = info?.price ?? 0;
+        return sum + parseFloat(hop.fee || '0') * price;
+      }, 0);
+      data.totalFeeUSD = totalFeeUSD;
+
+      // Convert total fee to fromToken for on-chain/display compatibility
+      const fromTokenInfo = tokenMap.get(route[0]);
+      const fromTokenPrice = fromTokenInfo?.price ?? 0;
+      data.totalFee = fromTokenPrice > 0
+        ? (totalFeeUSD / fromTokenPrice).toString()
+        : originalHops.reduce((sum: number, hop: any) => sum + parseFloat(hop.fee || '0'), 0).toString();
+
       // Set hops count (after calculating totalFee)
       data.hops = originalHops.length;
       
