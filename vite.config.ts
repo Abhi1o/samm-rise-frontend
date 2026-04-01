@@ -36,5 +36,17 @@ export default defineConfig(() => ({
         },
       },
     },
+    // Remove console logs in production build
+    terserOptions: {
+      compress: {
+        drop_console: false, // Keep console for our custom branding
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove specific console methods
+      },
+    },
+  },
+  esbuild: {
+    // Remove console logs during development build (optional)
+    drop: process.env.NODE_ENV === 'production' ? ['debugger'] : [],
   },
 }));
