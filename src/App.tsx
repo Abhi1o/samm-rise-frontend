@@ -7,6 +7,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { ThemeProvider, useTheme } from "next-themes";
 import { WagmiProvider } from "wagmi";
 import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { Analytics } from "@vercel/analytics/react";
 import { wagmiConfig } from "@/config/web3";
 import { getRainbowKitTheme } from "@/config/rainbowkit-theme";
 import { riseChain } from "@/config/chains";
@@ -65,6 +66,7 @@ const App = () => (
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </BrowserRouter>
+                <Analytics />
               </TooltipProvider>
             </NetworkProvider>
           </RainbowKitWrapper>
