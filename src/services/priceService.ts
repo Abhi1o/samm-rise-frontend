@@ -1,6 +1,19 @@
 import axios from 'axios';
 import { COINGECKO_API_URL, COINCAP_API_URL, CRYPTOCOMPARE_API_URL, BINANCE_API_URL } from '@/utils/constants';
 
+// Silent logger for production - only logs in development
+const silentLog = {
+  log: (...args: any[]) => {
+    if (import.meta.env.DEV) console.log(...args);
+  },
+  warn: (...args: any[]) => {
+    if (import.meta.env.DEV) console.warn(...args);
+  },
+  error: (...args: any[]) => {
+    if (import.meta.env.DEV) console.error(...args);
+  },
+};
+
 interface CoinGeckoPriceResponse {
   [coinId: string]: {
     usd: number;
@@ -93,7 +106,7 @@ async function fetchFromCoinCap(coingeckoId: string): Promise<{ usd: number; usd
   try {
     const coinCapId = COINGECKO_TO_COINCAP[coingeckoId];
     if (!coinCapId) {
-      console.log(`No CoinCap mapping for ${coingeckoId}`);
+      silentLog.log(`No CoinCap mapping for ${coingeckoId}`);
       return null;
     }
 
@@ -107,7 +120,7 @@ async function fetchFromCoinCap(coingeckoId: string): Promise<{ usd: number; usd
       usd_24h_change: data.changePercent24Hr ? parseFloat(data.changePercent24Hr) : undefined,
     };
   } catch (error) {
-    console.error(`CoinCap API error for ${coingeckoId}:`, error);
+    silentLog.error(`CoinCap API error for ${coingeckoId}:`, error);
     return null;
   }
 }
@@ -119,7 +132,7 @@ async function fetchFromCryptoCompare(coingeckoId: string): Promise<{ usd: numbe
   try {
     const symbol = COINGECKO_TO_CRYPTOCOMPARE[coingeckoId];
     if (!symbol) {
-      console.log(`No CryptoCompare mapping for ${coingeckoId}`);
+      silentLog.log(`No CryptoCompare mapping for ${coingeckoId}`);
       return null;
     }
 
@@ -134,7 +147,7 @@ async function fetchFromCryptoCompare(coingeckoId: string): Promise<{ usd: numbe
       usd_24h_change: undefined, // CryptoCompare free tier doesn't include 24h change
     };
   } catch (error) {
-    console.error(`CryptoCompare API error for ${coingeckoId}:`, error);
+    silentLog.error(`CryptoCompare API error for ${coingeckoId}:`, error);
     return null;
   }
 }
@@ -146,7 +159,7 @@ async function fetchFromBinance(coingeckoId: string): Promise<{ usd: number; usd
   try {
     const symbol = COINGECKO_TO_BINANCE[coingeckoId];
     if (!symbol) {
-      console.log(`No Binance mapping for ${coingeckoId}`);
+      silentLog.log(`No Binance mapping for ${coingeckoId}`);
       return null;
     }
 
@@ -165,7 +178,7 @@ async function fetchFromBinance(coingeckoId: string): Promise<{ usd: number; usd
       usd_24h_change: response.data.priceChangePercent ? parseFloat(response.data.priceChangePercent) : undefined,
     };
   } catch (error) {
-    console.error(`Binance API error for ${coingeckoId}:`, error);
+    silentLog.error(`Binance API error for ${coingeckoId}:`, error);
     return null;
   }
 }
@@ -204,11 +217,11 @@ export async function fetchTokenPrice(
         return data;
       }
     } catch (error: any) {
-      console.warn(`CoinGecko API failed for ${coingeckoId} (${error?.response?.status || 'unknown error'}), trying fallbacks...`);
+      silentLog.warn(`CoinGecko API failed for ${coingeckoId} (${error?.response?.status || 'unknown error'}), trying fallbacks...`);
     }
 
     // Fallback #1: Try Binance (excellent CORS support, free, no API key)
-    console.log(`Trying Binance for ${coingeckoId}...`);
+    silentLog.log(`Trying Binance for ${coingeckoId}...`);
     const binancePrice = await fetchFromBinance(coingeckoId);
     if (binancePrice) {
       // Cache the result
@@ -221,7 +234,7 @@ export async function fetchTokenPrice(
     }
 
     // Fallback #2: Try CryptoCompare (good CORS support)
-    console.log(`Trying CryptoCompare for ${coingeckoId}...`);
+    silentLog.log(`Trying CryptoCompare for ${coingeckoId}...`);
     const cryptoComparePrice = await fetchFromCryptoCompare(coingeckoId);
     if (cryptoComparePrice) {
       // Cache the result
@@ -234,7 +247,7 @@ export async function fetchTokenPrice(
     }
 
     // Fallback #3: Try CoinCap (may have CORS issues in browser)
-    console.log(`Trying CoinCap for ${coingeckoId}...`);
+    silentLog.log(`Trying CoinCap for ${coingeckoId}...`);
     const coinCapPrice = await fetchFromCoinCap(coingeckoId);
     if (coinCapPrice) {
       // Cache the result
@@ -249,13 +262,13 @@ export async function fetchTokenPrice(
     // Return stale cached value if all APIs fail
     const staleCache = priceCache.get(coingeckoId);
     if (staleCache) {
-      console.log(`Using stale cache for ${coingeckoId}`);
+      silentLog.log(`Using stale cache for ${coingeckoId}`);
       return { usd: staleCache.price, usd_24h_change: staleCache.change24h };
     }
 
     return null;
   } catch (error) {
-    console.error(`Error fetching price for ${coingeckoId}:`, error);
+    silentLog.error(`Error fetching price for ${coingeckoId}:`, error);
     // Return cached value if available, even if stale
     const cached = priceCache.get(coingeckoId);
     if (cached) {
@@ -306,7 +319,7 @@ export async function fetchMultipleTokenPrices(
       return result;
     }
   } catch (error: any) {
-    console.warn(`CoinGecko batch API failed (${error?.response?.status || 'unknown error'}), falling back to individual requests...`);
+    silentLog.warn(`CoinGecko batch API failed (${error?.response?.status || 'unknown error'}), falling back to individual requests...`);
   }
 
   // For missing prices or if CoinGecko failed, try fallback APIs individually
