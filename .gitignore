@@ -17,7 +17,7 @@ dist
 dist-ssr
 build
 *.local
-
+.claude
 # Environment variables
 .env
 .env.local
@@ -52,3 +52,11 @@ coverage
 Thumbs.db
 .AppleDouble
 .LSOverride
+
+# Documentation (kept in root Doc/ folder)
+docs/
+JUDGES_GUIDE.md
+INTEGRATION_SUMMARY.md
+*_INTEGRATION.md
+*_REGISTRY.md
+ARCHITECTURE.md
