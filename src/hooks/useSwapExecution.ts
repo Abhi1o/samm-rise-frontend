@@ -175,7 +175,13 @@ export function useSwapExecution(): UseSwapExecutionReturn {
       // buildSwapPath calls quoteSwap() on-chain — must be awaited outside new Promise().
       setSwapState('preparing');
       currentSwapParams.current = params;
-      const routerAddress = getCrossPoolRouter(chainId);
+      let routerAddress: Address;
+      try {
+        routerAddress = getCrossPoolRouter(chainId);
+      } catch {
+        setSwapState('error');
+        throw new Error(`SAMM swaps are only supported on RiseChain. Please switch network.`);
+      }
 
       let swapParams: Awaited<ReturnType<typeof buildSwapPath>>;
       try {

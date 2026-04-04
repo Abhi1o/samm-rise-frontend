@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle, TriangleAlert } from "lucide-react";
-import { useAccount, useChainId } from "wagmi";
-import { Address, formatUnits } from "viem";
+import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle, TriangleAlert, TrendingUp, TrendingDown } from "lucide-react";
+import { useSwapCardComparison } from "@/hooks/useComparison";
+import { useAccount, useChainId, useSignTypedData, useSendTransaction, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
+import { Address, formatUnits, erc20Abi } from "viem";
 import TokenInput from "./TokenInput";
 import TokenSelectModal, { Token } from "./TokenSelectModal";
 import { Button } from "./ui/button";
@@ -11,6 +12,7 @@ import { useNetwork } from "@/contexts/NetworkContext";
 import { commonTokens } from "@/config/tokens";
 import { useBatchSwap } from "@/hooks/useBatchSwap";
 import { getCrossPoolRouter } from "@/config/contracts";
+import { riseChain } from "@/config/chains";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenPrice } from "@/hooks/useTokenPrice";
 import { Token as ConfigToken } from "@/types/tokens";
@@ -19,9 +21,16 @@ import { QUOTE_DEBOUNCE_DELAY, PRICE_IMPACT_WARNING, PRICE_IMPACT_CRITICAL } fro
 
 const EnhancedSwapCard = () => {
   const { toast } = useToast();
-  const { selectedNetwork } = useNetwork();
+  const { selectedNetwork, selectedRoute, setSelectedRoute } = useNetwork();
   const { address: userAddress, isConnected } = useAccount();
   const chainId = useChainId();
+  const { signTypedDataAsync } = useSignTypedData();
+  const { sendTransactionAsync } = useSendTransaction();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+  // Sepolia public client — uses wagmi transport (Alchemy if configured, else public RPC)
+  // This avoids CORS issues that `createPublicClient` with public RPCs has in the browser
+  const sepoliaPublicClient = usePublicClient({ chainId: 11155111 });
 
   const [fromValue, setFromValue] = useState("");
   const [toValue, setToValue] = useState("");
@@ -33,25 +42,39 @@ const EnhancedSwapCard = () => {
   const [routeInfo, setRouteInfo] = useState<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Route selection is now shared via NetworkContext so the header reflects it too
+  const [uniswapStep, setUniswapStep] = useState<'idle' | 'preparing' | 'switching' | 'approving' | 'signing' | 'executing' | 'sending' | 'success' | 'error'>('idle');
+  const [uniswapHash, setUniswapHash] = useState<string | null>(null);
+  const [uniswapError, setUniswapError] = useState<string | null>(null);
+  // Cached prepareSepolia result — reused by handleUniswapSwap to avoid a double API call
+  const [preparedSepoliaData, setPreparedSepoliaData] = useState<any>(null);
+  // Sepolia balances: symbol → formatted amount (e.g. { USDC: "10.50", WETH: "0.05" })
+  const [sepoliaBalances, setSepoliaBalances] = useState<Record<string, string>>({});
+  const [sepoliaBalancesLoading, setSepoliaBalancesLoading] = useState(false);
+  const [sepoliaRefreshTick, setSepoliaRefreshTick] = useState(0);
+
   // Get tokens for selected network
-  const networkTokens = selectedNetwork ? commonTokens[selectedNetwork.chainId] || [] : [];
+  // CRITICAL: Use wallet chainId directly instead of selectedNetwork context
+  // This allows Sepolia tokens to show when wallet is on Sepolia (for Uniswap swaps)
+  const networkTokens = chainId ? commonTokens[chainId] || [] : [];
+
 
   const [fromToken, setFromToken] = useState({
-    symbol: networkTokens[3]?.symbol || "USDC",
-    icon: networkTokens[3]?.icon || "💲",
+    symbol: networkTokens[2]?.symbol || "USDC",
+    icon: networkTokens[2]?.icon || "💲",
+    logoURI: networkTokens[2]?.logoURI,
+    balance: "0.00",
+    address: networkTokens[2]?.address || "",
+    decimals: networkTokens[2]?.decimals || 6,
+  });
+
+  const [toToken, setToToken] = useState({
+    symbol: networkTokens[3]?.symbol || "USDT",
+    icon: networkTokens[3]?.icon || "💵",
     logoURI: networkTokens[3]?.logoURI,
     balance: "0.00",
     address: networkTokens[3]?.address || "",
     decimals: networkTokens[3]?.decimals || 6,
-  });
-
-  const [toToken, setToToken] = useState({
-    symbol: networkTokens[4]?.symbol || "USDT",
-    icon: networkTokens[4]?.icon || "💵",
-    logoURI: networkTokens[4]?.logoURI,
-    balance: "0.00",
-    address: networkTokens[4]?.address || "",
-    decimals: networkTokens[4]?.decimals || 6,
   });
 
   // Check if token is native (doesn't need approval)
@@ -61,8 +84,8 @@ const EnhancedSwapCard = () => {
 
   const needsTokenApproval = !isNativeToken(fromToken.address);
 
-  // Get router address for approval
-  const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
+  // Get router address for approval — only valid on RiseChain, never on Sepolia or other chains
+  const routerAddress = chainId === riseChain.id ? getCrossPoolRouter(riseChain.id) : undefined;
 
   // Create ConfigToken objects for balance/price hooks (MUST be before useBatchSwap)
   const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);
@@ -126,20 +149,20 @@ const EnhancedSwapCard = () => {
   useEffect(() => {
     if (selectedNetwork && networkTokens.length > 0) {
       setFromToken({
-        symbol: networkTokens[3]?.symbol || networkTokens[0]?.symbol || "USDC",
-        icon: networkTokens[3]?.icon || networkTokens[0]?.icon || "💲",
-        logoURI: networkTokens[3]?.logoURI || networkTokens[0]?.logoURI,
+        symbol: networkTokens[2]?.symbol || networkTokens[0]?.symbol || "USDC",
+        icon: networkTokens[2]?.icon || networkTokens[0]?.icon || "💲",
+        logoURI: networkTokens[2]?.logoURI || networkTokens[0]?.logoURI,
         balance: "0.00",
-        address: networkTokens[3]?.address || networkTokens[0]?.address || "",
-        decimals: networkTokens[3]?.decimals || networkTokens[0]?.decimals || 6,
+        address: networkTokens[2]?.address || networkTokens[0]?.address || "",
+        decimals: networkTokens[2]?.decimals || networkTokens[0]?.decimals || 6,
       });
       setToToken({
-        symbol: networkTokens[4]?.symbol || networkTokens[1]?.symbol || "USDT",
-        icon: networkTokens[4]?.icon || networkTokens[1]?.icon || "💵",
-        logoURI: networkTokens[4]?.logoURI || networkTokens[1]?.logoURI,
+        symbol: networkTokens[3]?.symbol || networkTokens[1]?.symbol || "USDT",
+        icon: networkTokens[3]?.icon || networkTokens[1]?.icon || "💵",
+        logoURI: networkTokens[3]?.logoURI || networkTokens[1]?.logoURI,
         balance: "0.00",
-        address: networkTokens[4]?.address || networkTokens[1]?.address || "",
-        decimals: networkTokens[4]?.decimals || networkTokens[1]?.decimals || 6,
+        address: networkTokens[3]?.address || networkTokens[1]?.address || "",
+        decimals: networkTokens[3]?.decimals || networkTokens[1]?.decimals || 6,
       });
       // Clear quote when network changes
       setFromValue("");
@@ -200,6 +223,54 @@ const EnhancedSwapCard = () => {
     };
   }, [fromValue, fromToken.address, toToken.address, fromToken.balance, fromBalanceLoading]);
 
+
+  // Fetch Sepolia token balances directly from Sepolia blockchain
+  // NOTE: Backend /balances/:address returns RiseChain balances, not Sepolia
+  // We must read directly from Sepolia chain using the token addresses from commonTokens[11155111]
+  useEffect(() => {
+    if (selectedRoute !== 'uniswap' || !userAddress || !sepoliaPublicClient) {
+      setSepoliaBalances({});
+      return;
+    }
+    let cancelled = false;
+    setSepoliaBalancesLoading(true);
+
+    const sepoliaTokens = commonTokens[11155111] || [];
+
+    const fetchAll = async () => {
+      const result: Record<string, string> = {};
+      await Promise.all(
+        sepoliaTokens.map(async (token) => {
+          try {
+            // Native ETH
+            if (!token.address || token.address === '0x0000000000000000000000000000000000000000') {
+              const bal = await sepoliaPublicClient.getBalance({ address: userAddress as Address });
+              result[token.symbol] = formatUnits(bal, 18);
+            } else {
+              // @ts-ignore — viem version type mismatch with authorizationList
+              const bal = await sepoliaPublicClient.readContract({
+                address: token.address as Address,
+                abi: erc20Abi,
+                functionName: 'balanceOf',
+                args: [userAddress as Address],
+              }) as bigint;
+              result[token.symbol] = formatUnits(bal, token.decimals);
+            }
+          } catch {
+            result[token.symbol] = '0.00';
+          }
+        })
+      );
+      return result;
+    };
+
+    fetchAll()
+      .then((balances) => { if (!cancelled) setSepoliaBalances(balances); })
+      .catch(() => { if (!cancelled) setSepoliaBalances({}); })
+      .finally(() => { if (!cancelled) setSepoliaBalancesLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [selectedRoute, userAddress, sepoliaPublicClient, sepoliaRefreshTick]);
 
   // Refresh balances when swap succeeds (but don't auto-reset, let user click "Done")
   useEffect(() => {
@@ -511,9 +582,131 @@ const EnhancedSwapCard = () => {
     return ((inputUSD - outputUSD) / inputUSD) * 100;
   }, [fromValue, toValue, fromPrice, toPrice]);
 
+  // Comparison data for route selector.
+  // The backend /compare endpoint only supports DIRECT pools (single-hop).
+  // For multi-hop pairs (hops > 1) it returns 500 — skip the call entirely.
+  // IMPORTANT: /compare uses exact-output model — pass toValue (amountOut), NOT fromValue (amountIn).
+  // If we pass fromValue (e.g. 100 USDC input), backend interprets it as "give me 100 WETH output"
+  // which is ~2000x the actual trade. The badge would be for the wrong trade size entirely.
+  const isDirectSwap = quoteData?.hops === 1;
+  const { data: comparisonData, isLoading: comparisonLoading } = useSwapCardComparison(
+    (quoteData && isDirectSwap && toValue) ? fromToken.symbol : undefined,
+    (quoteData && isDirectSwap && toValue) ? toToken.symbol : undefined,
+    (quoteData && isDirectSwap && toValue) ? toValue : undefined
+  );
+
+  // Auto-select best route when comparison loads ('equal' stays as SAMM)
+  useEffect(() => {
+    if (comparisonData?.winner === 'samm' || comparisonData?.winner === 'uniswap') {
+      setSelectedRoute(comparisonData.winner);
+    }
+  }, [comparisonData?.winner]);
+
+  // Reset route selection and uniswap state when user changes tokens or amount
+  useEffect(() => {
+    setSelectedRoute('samm');
+    setUniswapStep('idle');
+    setUniswapHash(null);
+    setUniswapError(null);
+  }, [fromToken.symbol, toToken.symbol, fromValue]);
+
+  // Uniswap Permit2 swap flow
+  const handleUniswapSwap = async () => {
+    if (!isConnected || !userAddress || !fromValue) return;
+    setUniswapStep('preparing');
+    setUniswapError(null);
+    setUniswapHash(null);
+    try {
+      // 1. Get Permit2 signature data from backend
+      const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+
+      // 2. Always force-switch to Sepolia.
+      // Wagmi can cache stale chain state across page refreshes — if the cached
+      // chainId is already 11155111 but MetaMask is on RiseChain, skipping the
+      // switch causes a connector/connection chain mismatch on sendTransaction.
+      // Calling switchChainAsync unconditionally forces MetaMask to be in sync.
+      setUniswapStep('switching');
+      await switchChainAsync({ chainId: 11155111 });
+
+      // 3. ERC-20 one-time approval for Permit2 contract (if required)
+      // The backend signals this via needsTokenApproval. This is a one-time tx per token.
+      // Uses prepared.tokenIn (Sepolia ERC-20 address) — NOT fromToken.address (RiseChain address).
+      if (prepared.needsTokenApproval && prepared.permit2Address && prepared.tokenIn) {
+        setUniswapStep('approving');
+        const ERC20_APPROVE_ABI = [
+          {
+            name: 'approve',
+            type: 'function',
+            stateMutability: 'nonpayable',
+            inputs: [
+              { name: 'spender', type: 'address' },
+              { name: 'amount', type: 'uint256' },
+            ],
+            outputs: [{ name: '', type: 'bool' }],
+          },
+        ] as const;
+        // @ts-ignore — wagmi v2 type inference issue with inline const ABI + chainId
+        await writeContractAsync({
+          address: prepared.tokenIn as `0x${string}`,
+          abi: ERC20_APPROVE_ABI,
+          functionName: 'approve',
+          args: [prepared.permit2Address as `0x${string}`, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
+          chainId: 11155111,
+        });
+      }
+
+      // 4. Sign permit data (if present — native ETH swaps may not need it)
+      setUniswapStep('signing');
+      let signature: string | undefined;
+      if (prepared.permitData) {
+        // Uniswap API returns { domain, types, values } but wagmi needs { domain, types, primaryType, message }
+        const { domain, types, values } = prepared.permitData;
+        const primaryType = Object.keys(types).find(
+          k => !['EIP712Domain', 'TokenPermissions', 'PermitDetails'].includes(k)
+        ) || 'PermitSingle';
+        signature = await signTypedDataAsync({ domain, types, primaryType, message: values } as any);
+      }
+
+      // 4. Get unsigned calldata (routing is required by backend)
+      setUniswapStep('executing');
+      const execResult = await sammApi.executeSepolia(prepared.quote, signature, prepared.permitData, prepared.routing);
+
+      // 5. Broadcast transaction (response is nested under unsignedTransaction)
+      const utx = execResult.unsignedTransaction;
+      setUniswapStep('sending');
+      const hash = await sendTransactionAsync({
+        to: utx.to as `0x${string}`,
+        data: utx.data as `0x${string}`,
+        value: BigInt(utx.value || '0'),
+        ...(utx.gasLimit ? { gas: BigInt(utx.gasLimit) } : {}),
+        chainId: 11155111,
+      });
+
+      setUniswapHash(hash);
+      setUniswapStep('success');
+
+      // Refresh Sepolia balances — increment tick to re-trigger the balance useEffect
+      setSepoliaRefreshTick(t => t + 1);
+
+      // Auto-switch wallet back to RiseChain so the user can continue using SAMM
+      try {
+        await switchChainAsync({ chainId: riseChain.id });
+      } catch {
+        // User dismissed the switch — harmless, they can switch manually
+      }
+    } catch (err: any) {
+      setUniswapError(err.message || 'Uniswap swap failed');
+      setUniswapStep('error');
+      // If swap failed (not just a chain switch error), try to restore RiseChain
+      if (chainId !== riseChain.id) {
+        try { await switchChainAsync({ chainId: riseChain.id }); } catch { /* ignore */ }
+      }
+    }
+  };
+
   /**
    * Handle swap execution
-   * Two-step process: approve token (if needed) → execute swap
+   * Routes to SAMM (RiseChain) or Uniswap (Sepolia Permit2) based on selectedRoute
    */
   const handleSwap = async () => {
     if (!isConnected) {
@@ -534,23 +727,36 @@ const EnhancedSwapCard = () => {
       return;
     }
 
+    if (selectedRoute === 'uniswap') {
+      await handleUniswapSwap();
+      return;
+    }
+
     try {
-      // Execute batch swap (approval + swap in single user action)
+      // SAMM: Execute batch swap (approval + swap in single user action)
       await batchSwap.executeBatchSwap();
-      // Success! Inline display will show complete state with "Done" button
     } catch (error: any) {
       console.error('Batch swap failed:', error);
-      // Error is shown inline
     }
   };
+
+  // When Uniswap route is selected, use Sepolia balances instead of RiseChain balances.
+  // RiseChain token addresses don't exist on Sepolia, so useTokenBalance returns 0 there.
+  const displayFromBalance = selectedRoute === 'uniswap'
+    ? (sepoliaBalancesLoading ? '...' : (sepoliaBalances[fromToken.symbol] ?? '0.00'))
+    : fromToken.balance;
+  const displayToBalance = selectedRoute === 'uniswap'
+    ? (sepoliaBalancesLoading ? '...' : (sepoliaBalances[toToken.symbol] ?? '0.00'))
+    : toToken.balance;
 
   // Check if user has insufficient balance
   const isInsufficientBalance =
     !!fromValue &&
     parseFloat(fromValue) > 0 &&
     !fromBalanceLoading &&
-    parseFloat(fromToken.balance) >= 0 &&
-    parseFloat(fromValue) > parseFloat(fromToken.balance);
+    !sepoliaBalancesLoading &&
+    parseFloat(displayFromBalance) >= 0 &&
+    parseFloat(fromValue) > parseFloat(displayFromBalance);
 
   // Get button text based on current state
   const getButtonText = () => {
@@ -560,7 +766,22 @@ const EnhancedSwapCard = () => {
     if (loading) return "Fetching quote...";
     if (!toValue) return "Enter an amount";
 
-    // Batch swap states
+    // Uniswap Permit2 route states
+    if (selectedRoute === 'uniswap') {
+      switch (uniswapStep) {
+        case 'preparing': return 'Preparing Uniswap swap...';
+        case 'switching': return 'Switch to Sepolia in wallet...';
+        case 'approving': return 'Approve token for Permit2...';
+        case 'signing': return 'Sign Permit2 in wallet...';
+        case 'executing': return 'Getting calldata...';
+        case 'sending': return 'Confirm in wallet...';
+        case 'success': return 'Swap Successful!';
+        case 'error': return 'Try Again';
+        default: return 'Swap via Uniswap (Sepolia)';
+      }
+    }
+
+    // SAMM batch swap states
     switch (batchSwap.currentStep) {
       case 'checking':
         return "Checking approval...";
@@ -574,22 +795,23 @@ const EnhancedSwapCard = () => {
         return "Swap Successful!";
       case 'error':
         return "Try Again";
-      default:
-        // Show "Approve & Swap" if approval needed, otherwise "Swap"
+      default: {
         const needsApproval = batchSwap.steps.some(step => step.label.includes('Approve') && step.status === 'pending');
         return needsApproval ? `Approve & Swap` : "Swap";
+      }
     }
   };
 
   // Button should be disabled during loading or transaction states
   // BUT: Don't disable while fetching quote - show "Fetching quote..." text instead
+  const isUniswapSwapping = ['preparing', 'switching', 'approving', 'signing', 'executing', 'sending'].includes(uniswapStep);
   const isButtonDisabled =
     !isConnected ||
     !fromValue ||
     isInsufficientBalance ||
-    (!toValue && !loading) ||  // Allow button to show "Fetching quote..." when loading
-    batchSwap.isLoading ||
-    batchSwap.currentStep === 'success';
+    (!toValue && !loading) ||
+    (selectedRoute === 'samm' && (batchSwap.isLoading || batchSwap.currentStep === 'success')) ||
+    (selectedRoute === 'uniswap' && (isUniswapSwapping || uniswapStep === 'success'));
 
   return (
     <>
@@ -601,7 +823,7 @@ const EnhancedSwapCard = () => {
               <h2 className="text-xl font-semibold text-foreground">Swap</h2>
               <span className="px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium flex items-center gap-1">
                 <Zap className="w-3 h-3" />
-                {selectedNetwork?.displayName || "Loading..."}
+                {selectedRoute === 'uniswap' ? 'Sepolia Testnet' : (selectedNetwork?.displayName || "Loading...")}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -621,12 +843,16 @@ const EnhancedSwapCard = () => {
           {/* From Token */}
           <TokenInput
             label="You pay"
-            token={fromToken}
+            token={{ ...fromToken, balance: displayFromBalance }}
             value={fromValue}
             onChange={setFromValue}
             usdValue={fromValueUSD}
             isInsufficient={isInsufficientBalance}
-            onMax={() => setFromValue(fromToken.balance || "")}
+            onMax={() => setFromValue(
+              selectedRoute === 'uniswap'
+                ? (sepoliaBalances[fromToken.symbol] ?? '')
+                : (fromToken.balance || '')
+            )}
             onTokenClick={() => openTokenModal("from")}
           />
 
@@ -643,7 +869,7 @@ const EnhancedSwapCard = () => {
           {/* To Token */}
           <TokenInput
             label="You receive"
-            token={toToken}
+            token={{ ...toToken, balance: displayToBalance }}
             value={toValue}
             onChange={setToValue}
             usdValue={toValueUSD}
@@ -717,6 +943,126 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
+          {/* Route Selector — auto-selects best rate, user can override */}
+          {quoteData && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium px-0.5">Select Route</p>
+              <div className="grid grid-cols-2 gap-2">
+                {/* SAMM */}
+                <button
+                  onClick={() => setSelectedRoute('samm')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    selectedRoute === 'samm'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border bg-secondary/20 hover:border-primary/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-foreground">SAMM</span>
+                    {(comparisonData?.winner === 'samm' ||
+                      (!comparisonLoading && quoteData && (!comparisonData || comparisonData.uniswap.amountOut === '0'))) && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-mono flex items-center gap-0.5">
+                        <TrendingUp className="w-2.5 h-2.5" /> Best
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-mono text-sm font-bold text-foreground">
+                    {parseFloat(toValue || '0').toFixed(4)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">RiseChain</p>
+                </button>
+
+                {/* Uniswap — always selectable, rate shown when comparison data exists */}
+                <button
+                  onClick={() => setSelectedRoute('uniswap')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    selectedRoute === 'uniswap'
+                      ? 'border-orange-500/70 bg-orange-500/10'
+                      : 'border-border bg-secondary/20 hover:border-orange-500/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-foreground">Uniswap</span>
+                    {comparisonData?.winner === 'uniswap' && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-mono flex items-center gap-0.5">
+                        <TrendingUp className="w-2.5 h-2.5" /> Best
+                      </span>
+                    )}
+                  </div>
+                  {comparisonLoading ? (
+                    <p className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                    </p>
+                  ) : comparisonData && comparisonData.uniswap.amountOut !== '0' ? (
+                    // Direct pair — comparison available
+                    <>
+                      <p className="font-mono text-sm font-bold text-foreground">
+                        {parseFloat(comparisonData.uniswap.amountOut).toFixed(4)}
+                      </p>
+                      {parseFloat(comparisonData.delta.percentage) > 0.01 && (
+                        <p className={`text-[10px] mt-0.5 font-mono ${comparisonData.winner === 'uniswap' ? 'text-green-400' : 'text-red-400/70'}`}>
+                          {comparisonData.winner === 'uniswap' ? '↓' : '↑'} {parseFloat(comparisonData.delta.percentage).toFixed(2)}% cost
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Sepolia · Permit2</p>
+                    </>
+                  ) : !isDirectSwap && quoteData ? (
+                    // Multi-hop pair — Uniswap routes internally, rate shown after prepare
+                    <>
+                      <p className="font-mono text-xs text-yellow-400/80 font-semibold">
+                        ~{parseFloat(toValue || '0').toFixed(4)}
+                      </p>
+                      <p className="text-[10px] text-yellow-500/70 mt-0.5">Multi-hop · Uniswap routes internally</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Exact rate on proceed</p>
+                    </>
+                  ) : (
+                    // Direct pair but no comparison data (API unavailable)
+                    <>
+                      <p className="font-mono text-xs text-foreground/60">Rate N/A</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Sepolia · Permit2</p>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Sepolia info banner — shown when Uniswap route is selected */}
+              {selectedRoute === 'uniswap' && uniswapStep === 'idle' && (
+                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[10px] text-blue-400/90 space-y-1">
+                  <p className="font-semibold flex items-center gap-2">
+                    <Info className="w-3 h-3 flex-shrink-0" />
+                    Uniswap runs on Sepolia testnet
+                    {sepoliaBalancesLoading && (
+                      <Loader2 className="w-3 h-3 animate-spin ml-auto" />
+                    )}
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Balances shown above are your <span className="text-blue-300 font-semibold">Sepolia</span> token balances (different from RiseChain).
+                    You need <span className="text-blue-300 font-mono">Sepolia ETH</span> for gas.
+                    Get tokens from{' '}
+                    <a href="https://sepoliafaucet.com" target="_blank" rel="noopener noreferrer"
+                      className="underline hover:text-blue-300 transition-colors">
+                      sepoliafaucet.com
+                    </a>.
+                  </p>
+                </div>
+              )}
+
+              {/* Delta line */}
+              {comparisonData && Math.abs(parseFloat(comparisonData.delta.percentage)) >= 0.01 && (
+                <p className="text-center text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                  {comparisonData.winner === 'samm' ? (
+                    <TrendingUp className="w-3 h-3 text-green-400" />
+                  ) : (
+                    <TrendingDown className="w-3 h-3 text-orange-400" />
+                  )}
+                  {comparisonData.winner === 'samm'
+                    ? `SAMM gives ${Math.abs(parseFloat(comparisonData.delta.percentage)).toFixed(2)}% more ${toToken.symbol}`
+                    : `Uniswap gives ${Math.abs(parseFloat(comparisonData.delta.percentage)).toFixed(2)}% more ${toToken.symbol}`}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* High price impact banner */}
           {priceImpact !== null && priceImpact >= PRICE_IMPACT_WARNING && toValue && (
             <div
@@ -736,8 +1082,11 @@ const EnhancedSwapCard = () => {
           )}
 
 
-          {/* Swap Action Button - Only show when not in success/error state */}
-          {batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error' && (
+          {/* Swap Action Button */}
+          {(selectedRoute === 'samm'
+            ? batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error'
+            : uniswapStep !== 'success' && uniswapStep !== 'error'
+          ) && (
             <Button
               variant="swap"
               size="xl"
@@ -754,8 +1103,8 @@ const EnhancedSwapCard = () => {
             </Button>
           )}
 
-          {/* Transaction Progress Status - Inline Display */}
-          {batchSwap.currentStep !== 'idle' && batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error' && (
+          {/* SAMM Transaction Progress Status */}
+          {selectedRoute === 'samm' && batchSwap.currentStep !== 'idle' && batchSwap.currentStep !== 'success' && batchSwap.currentStep !== 'error' && (
             <div className="mt-4 p-4 rounded-xl bg-primary/10 border border-primary/20">
               <div className="space-y-3">
                 {batchSwap.steps.map((step, index) => (
@@ -800,8 +1149,8 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Transaction Success Display */}
-          {batchSwap.currentStep === 'success' && (
+          {/* SAMM Transaction Success Display */}
+          {selectedRoute === 'samm' && batchSwap.currentStep === 'success' && (
             <div className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
               <div className="flex items-start gap-3 mb-3">
                 <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -860,8 +1209,8 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Transaction Error Display */}
-          {batchSwap.currentStep === 'error' && (
+          {/* SAMM Transaction Error Display */}
+          {selectedRoute === 'samm' && batchSwap.currentStep === 'error' && (
             <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 min-w-0">
               <div className="flex items-start gap-3 mb-3 min-w-0">
                 <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
@@ -899,6 +1248,94 @@ const EnhancedSwapCard = () => {
                 className="w-full"
                 variant="destructive"
               >
+                Try Again
+              </Button>
+            </div>
+          )}
+
+          {/* Uniswap Permit2 — In-progress */}
+          {selectedRoute === 'uniswap' && isUniswapSwapping && (
+            <div className="mt-4 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
+              <div className="space-y-3">
+                {(['preparing', 'switching', 'approving', 'signing', 'executing', 'sending'] as const).map((step) => {
+                  const labels: Record<string, string> = {
+                    preparing: 'Preparing Uniswap swap',
+                    switching: 'Switch to Sepolia',
+                    approving: 'Approve token for Permit2',
+                    signing: 'Sign Permit2 in wallet',
+                    executing: 'Getting calldata',
+                    sending: 'Confirm transaction in wallet',
+                  };
+                  const steps = ['preparing', 'switching', 'approving', 'signing', 'executing', 'sending'];
+                  const currentIdx = steps.indexOf(uniswapStep);
+                  const stepIdx = steps.indexOf(step);
+                  const isDone = stepIdx < currentIdx;
+                  const isActive = stepIdx === currentIdx;
+                  return (
+                    <div key={step} className="flex items-center gap-3">
+                      <div className="flex-shrink-0">
+                        {isDone && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+                        {isActive && <Loader2 className="w-5 h-5 text-orange-400 animate-spin" />}
+                        {!isDone && !isActive && <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />}
+                      </div>
+                      <p className={`text-sm font-medium ${isActive ? 'text-orange-400' : isDone ? 'text-green-500' : 'text-muted-foreground'}`}>
+                        {labels[step]}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Uniswap — Success */}
+          {selectedRoute === 'uniswap' && uniswapStep === 'success' && (
+            <div className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+              <div className="flex items-start gap-3 mb-3">
+                <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-bold text-green-500 mb-1">Uniswap Swap Successful!</h3>
+                  <p className="text-sm text-muted-foreground">Executed on Sepolia via Permit2</p>
+                </div>
+              </div>
+              {uniswapHash && (
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${uniswapHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-2 rounded-lg bg-secondary/30 border border-border/50 text-xs font-mono text-primary hover:underline truncate mb-3"
+                >
+                  {uniswapHash}
+                </a>
+              )}
+              <Button
+                onClick={() => {
+                  setUniswapStep('idle');
+                  setUniswapHash(null);
+                  setFromValue('');
+                  setToValue('');
+                  setQuoteData(null);
+                  setRouteInfo('');
+                }}
+                className="w-full"
+                variant="default"
+              >
+                Done
+              </Button>
+            </div>
+          )}
+
+          {/* Uniswap — Error */}
+          {selectedRoute === 'uniswap' && uniswapStep === 'error' && (
+            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
+              <div className="flex items-start gap-3 mb-3">
+                <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-bold text-destructive mb-1">Uniswap Swap Failed</h3>
+                  <p className="text-sm text-muted-foreground break-words">{uniswapError || 'Unknown error'}</p>
+                </div>
+              </div>
+              <Button onClick={() => setUniswapStep('idle')} className="w-full" variant="destructive">
                 Try Again
               </Button>
             </div>

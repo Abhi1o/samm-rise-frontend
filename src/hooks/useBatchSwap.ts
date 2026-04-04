@@ -6,6 +6,7 @@ import { useSwapExecution } from './useSwapExecution';
 import { BatchSwapStep, ProgressStep, UseBatchSwapReturn } from '@/types/batch';
 import { Token } from '@/types/tokens';
 import { getCrossPoolRouter } from '@/config/contracts';
+import { riseChain } from '@/config/chains';
 import {parseError, isUserRejection} from '@/utils/errorParser';
 
 
@@ -30,8 +31,8 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   const [currentStep, setCurrentStep] = useState<BatchSwapStep>('idle');
   const [error, setError] = useState<Error | undefined>();
 
-  // Get router address for approvals
-  const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
+  // Get router address for approvals — only valid on RiseChain, never on Sepolia
+  const routerAddress = chainId === riseChain.id ? getCrossPoolRouter(riseChain.id) : undefined;
 
   // Convert amountIn string to bigint for the allowance check.
   // quoteData.amountIn is a formatted decimal (e.g. "11.255641").
