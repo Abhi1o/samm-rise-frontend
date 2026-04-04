@@ -148,6 +148,11 @@ const EnhancedSwapCard = () => {
 
   // Reset tokens when network changes
   useEffect(() => {
+    // Don't reset tokens during an active Uniswap swap flow
+    if (uniswapStep !== 'idle' && uniswapStep !== 'success' && uniswapStep !== 'error') {
+      return;
+    }
+    
     if (selectedNetwork && networkTokens.length > 0) {
       setFromToken({
         symbol: networkTokens[2]?.symbol || networkTokens[0]?.symbol || "USDC",
@@ -171,7 +176,7 @@ const EnhancedSwapCard = () => {
       setQuoteData(null);
       setRouteInfo("");
     }
-  }, [selectedNetwork]);
+  }, [selectedNetwork, uniswapStep]);
 
   // Fetch both SAMM and Uniswap quotes whenever amount or tokens change (debounced)
   useEffect(() => {
@@ -209,8 +214,10 @@ const EnhancedSwapCard = () => {
       await Promise.all(
         sepoliaTokens.map(async (token) => {
           try {
-            // Native ETH
-            if (!token.address || token.address === '0x0000000000000000000000000000000000000000') {
+            // Native ETH - check for both zero address and NATIVE_TOKEN_ADDRESS constant
+            if (!token.address || 
+                token.address === '0x0000000000000000000000000000000000000000' ||
+                token.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
               const bal = await sepoliaPublicClient.getBalance({ address: userAddress as Address });
               result[token.symbol] = formatUnits(bal, 18);
             } else {
@@ -350,8 +357,8 @@ const EnhancedSwapCard = () => {
       try {
         const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
         const outputRaw: string = prepared.quote?.output?.amount ?? '0';
-        const effectiveDecimals = fromToken.decimals + toToken.decimals;
-        const outputAmount = parseFloat(formatUnits(BigInt(outputRaw), effectiveDecimals));
+        // Output amount is in the output token's decimals (not sum of both tokens)
+        const outputAmount = parseFloat(formatUnits(BigInt(outputRaw), toToken.decimals));
         setPreparedSepoliaData(prepared);
         setUniswapQuoteData({
           amountOut: outputAmount.toFixed(6),
@@ -481,12 +488,13 @@ const EnhancedSwapCard = () => {
     setUniswapError(null);
     setUniswapHash(null);
     try {
-      // 1. Use cached prepare result from fetchQuote; re-fetch only if somehow missing
-      let prepared = preparedSepoliaData;
-      if (!prepared) {
-        prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
-        setPreparedSepoliaData(prepared);
-      }
+      // 1. CRITICAL: Always fetch a FRESH quote right before swapping
+      // Permit2 signatures are time-sensitive and tied to a specific quote.
+      // Reusing cached/stale signatures causes transaction failures.
+      // See: https://api-docs.uniswap.org/guides/permit2
+      console.log('[Uniswap] Fetching fresh quote for swap...');
+      const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+      setPreparedSepoliaData(prepared); // Update cache for display
 
       // 2. Always force-switch to Sepolia.
       // Wagmi can cache stale chain state across page refreshes — if the cached
@@ -524,6 +532,7 @@ const EnhancedSwapCard = () => {
       }
 
       // 4. Sign permit data (if present — native ETH swaps may not need it)
+      // IMPORTANT: This signature MUST be from the fresh quote we just fetched
       setUniswapStep('signing');
       let signature: string | undefined;
       if (prepared.permitData) {
@@ -535,11 +544,12 @@ const EnhancedSwapCard = () => {
         signature = await signTypedDataAsync({ domain, types, primaryType, message: values } as any);
       }
 
-      // 4. Get unsigned calldata (routing is required by backend)
+      // 5. Get unsigned calldata (routing is required by backend)
+      // IMPORTANT: Use the SAME quote and signature we just obtained
       setUniswapStep('executing');
       const execResult = await sammApi.executeSepolia(prepared.quote, signature, prepared.permitData, prepared.routing);
 
-      // 5. Broadcast transaction (response is nested under unsignedTransaction)
+      // 6. Broadcast transaction (response is nested under unsignedTransaction)
       const utx = execResult.unsignedTransaction;
       setUniswapStep('sending');
       const hash = await sendTransactionAsync({
@@ -563,6 +573,7 @@ const EnhancedSwapCard = () => {
         // User dismissed the switch — harmless, they can switch manually
       }
     } catch (err: any) {
+      console.error('[Uniswap] Swap failed:', err);
       setUniswapError(err.message || 'Uniswap swap failed');
       setUniswapStep('error');
       // If swap failed (not just a chain switch error), try to restore RiseChain
@@ -586,7 +597,12 @@ const EnhancedSwapCard = () => {
       return;
     }
 
-    if (!fromToken.address || !toToken.address || !quoteData) {
+    // Validate based on selected route
+    const hasValidQuote = selectedRoute === 'uniswap' 
+      ? (uniswapQuoteData && preparedSepoliaData) 
+      : quoteData;
+
+    if (!fromToken.address || !toToken.address || !hasValidQuote) {
       toast({
         title: "Invalid Swap",
         description: "Please ensure all fields are filled",
@@ -673,11 +689,17 @@ const EnhancedSwapCard = () => {
   // Button should be disabled during loading or transaction states
   // BUT: Don't disable while fetching quote - show "Fetching quote..." text instead
   const isUniswapSwapping = ['preparing', 'switching', 'approving', 'signing', 'executing', 'sending'].includes(uniswapStep);
+  
+  // Check if we have a valid quote based on selected route
+  const hasValidQuote = selectedRoute === 'uniswap' 
+    ? (uniswapQuoteData && preparedSepoliaData)
+    : quoteData;
+  
   const isButtonDisabled =
     !isConnected ||
     !fromValue ||
     isInsufficientBalance ||
-    (!toValue && !loading) ||
+    (!hasValidQuote && !loading) ||
     (selectedRoute === 'samm' && (batchSwap.isLoading || batchSwap.currentStep === 'success')) ||
     (selectedRoute === 'uniswap' && (isUniswapSwapping || uniswapStep === 'success'));
 
@@ -946,6 +968,12 @@ const EnhancedSwapCard = () => {
                       sepoliafaucet.com
                     </a>.
                   </p>
+                  {fromToken.symbol === 'WETH' && (
+                    <p className="text-blue-300 leading-relaxed font-semibold mt-2 flex items-start gap-1">
+                      <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                      WETH balance 
+                    </p>
+                  )}
                 </div>
               )}
             </div>
