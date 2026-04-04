@@ -386,9 +386,7 @@ class SAMMApiService {
     // Backend real response shape:
     // { tokenIn, tokenOut, amountOut, samm: { amountIn, shard, fee, priceImpact, ... },
     //   sepoliaUniswap: { amountIn, amountOut, routing, ... },
-    //   mainnetUniswap: { amountIn, routing, ... },
-    //   comparison: { winner, deltaPercent, ... } (Sepolia - often broken),
-    //   mainnetComparison: { winner, deltaPercent, ... } (Mainnet - accurate) }
+    //   comparison: { winner:"SAMM"|"Uniswap (Sepolia)"|"Tie", deltaPercent, savingsUSD, ... } }
     // The model is EXACT-OUTPUT: both protocols give the same amountOut; comparison is on amountIn.
 
     // If the backend already returns our expected shape (future-proof), pass through
@@ -397,12 +395,8 @@ class SAMMApiService {
     }
 
     const amountOut = raw.amountOut ?? amount;
-    
-    // CRITICAL FIX: Use mainnet comparison instead of Sepolia
-    // Sepolia testnet pools have broken liquidity (returns absurd values like 0.000003 USDC for 11 USDT)
-    // Mainnet has real liquidity and provides accurate competitive comparison
-    const cmp = raw.mainnetComparison ?? raw.comparison ?? {};
-    const uniswap = raw.mainnetUniswap ?? raw.sepoliaUniswap ?? {};
+    const cmp = raw.comparison ?? {};
+    const sepoliaUni = raw.sepoliaUniswap ?? raw.mainnetUniswap ?? {};
 
     // Normalise winner string: "SAMM" → 'samm', "Uniswap*" → 'uniswap', "Tie" → 'equal'
     let winner: 'samm' | 'uniswap' | 'equal' = 'equal';
@@ -411,7 +405,7 @@ class SAMMApiService {
     else if (w.includes('uniswap')) winner = 'uniswap';
 
     const deltaAbs = Math.abs(
-      parseFloat(raw.samm?.amountIn ?? '0') - parseFloat(uniswap.amountIn ?? '0')
+      parseFloat(raw.samm?.amountIn ?? '0') - parseFloat(sepoliaUni.amountIn ?? '0')
     ).toFixed(6);
 
     return {
@@ -427,11 +421,11 @@ class SAMMApiService {
         priceImpact: String(raw.samm?.priceImpact ?? '0'),
       },
       uniswap: {
-        amountOut: uniswap.amountIn
+        amountOut: sepoliaUni.amountIn
           ? amountOut                                     // same output; cost comparison is in amountIn
           : '0',
-        fee: uniswap.routing ?? 'CLASSIC',
-        route: `${tokenIn} → ${tokenOut} (Mainnet)`,
+        fee: sepoliaUni.routing ?? 'Permit2',
+        route: `${tokenIn} → ${tokenOut} (Sepolia)`,
         priceImpact: '0',
       },
       delta: {
