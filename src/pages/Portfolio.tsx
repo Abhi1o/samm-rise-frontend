@@ -6,14 +6,20 @@ import Footer from '@/components/Footer';
 import { PortfolioOverview } from '@/components/PortfolioOverview';
 import { TokenBalancesList } from '@/components/TokenBalancesList';
 import { LPPositionsList } from '@/components/LPPositionsList';
+import { OraclePanel } from '@/components/OraclePanel';
 import { usePortfolioData } from '@/hooks/usePortfolioData';
 import { Button } from '@/components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Search, Loader2 } from 'lucide-react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { sammApi } from '@/services/sammApi';
 
 const Portfolio = () => {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<'tokens' | 'positions'>('tokens');
+  const [ensInput, setEnsInput] = useState('');
+  const [ensResolved, setEnsResolved] = useState<string | null>(null);
+  const [ensLoading, setEnsLoading] = useState(false);
+  const [ensError, setEnsError] = useState<string | null>(null);
 
   const { totalValueUSD, tokenBalances, lpPositions, isLoading } = usePortfolioData();
 
@@ -49,6 +55,61 @@ const Portfolio = () => {
               <p className="text-muted-foreground">
                 Track your token balances and liquidity positions
               </p>
+            </div>
+
+            {/* ENS Address Lookup */}
+            <div className="mb-6">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const val = ensInput.trim();
+                  if (!val) return;
+                  setEnsResolved(null);
+                  setEnsError(null);
+                  setEnsLoading(true);
+                  try {
+                    const result = await sammApi.getBalances(val);
+                    // result.address is the resolved on-chain address (backend resolves ENS server-side)
+                    if (val.endsWith('.eth') && result.address && result.address.toLowerCase() !== val.toLowerCase()) {
+                      setEnsResolved(result.address);
+                    }
+                  } catch {
+                    setEnsError('Could not resolve. Check the address or ENS name.');
+                  } finally {
+                    setEnsLoading(false);
+                  }
+                }}
+                className="flex gap-2"
+              >
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={ensInput}
+                    onChange={(e) => {
+                      setEnsInput(e.target.value);
+                      setEnsResolved(null);
+                      setEnsError(null);
+                    }}
+                    placeholder="Enter address or ENS name (e.g. vitalik.eth)"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-secondary/30 border border-border text-sm focus:outline-none focus:border-primary/50 font-mono"
+                  />
+                </div>
+                <Button type="submit" variant="outline" size="sm" disabled={ensLoading || !ensInput.trim()} className="shrink-0">
+                  {ensLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Lookup'}
+                </Button>
+              </form>
+              {ensResolved && (
+                <p className="mt-1.5 text-xs text-muted-foreground font-mono">
+                  Resolved:{' '}
+                  <span className="text-primary">{ensInput}</span>
+                  {' → '}
+                  <span className="text-foreground">{ensResolved}</span>
+                </p>
+              )}
+              {ensError && (
+                <p className="mt-1.5 text-xs text-destructive">{ensError}</p>
+              )}
             </div>
 
             {!isConnected ? (
@@ -134,6 +195,12 @@ const Portfolio = () => {
                 )}
               </div>
             )}
+
+            {/* Oracle Prices — always visible, no wallet needed */}
+            <div className="mt-10">
+              <h2 className="text-lg font-semibold text-foreground mb-4">Oracle Prices</h2>
+              <OraclePanel />
+            </div>
           </div>
         </main>
 

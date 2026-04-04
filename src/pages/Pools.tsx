@@ -10,6 +10,7 @@ import RemoveLiquidityModal from "@/components/RemoveLiquidityModal";
 import CreatePoolModal from "@/components/CreatePoolModal";
 import { usePoolData } from "@/hooks/usePoolData";
 import { useUserPositions, UserPosition } from "@/hooks/useUserPositions";
+import { useShardRegistry } from "@/hooks/useAgents";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { useAccount, usePublicClient } from "wagmi";
 import TokenLogo from "@/components/TokenLogo";
@@ -60,6 +61,13 @@ const Pools = () => {
 
   // Fetch user positions
   const { positions: userPositions, isLoading: positionsLoading, hasPositions, refetch: refetchPositions } = useUserPositions();
+
+  // ENS shard registry — maps shard address → ENS subname (e.g. small.weth-usdc.samm.eth)
+  const { data: shardRegistry } = useShardRegistry();
+  const getShardENS = (address: string) => {
+    if (!Array.isArray(shardRegistry)) return undefined;
+    return shardRegistry.find(s => s.address && s.address.toLowerCase() === address.toLowerCase())?.ensName;
+  };
 
   // Get tokens for current network to fetch logoURIs
   const networkTokens = currentNetwork ? getTokensForChain(currentNetwork.chainId) : [];
@@ -460,7 +468,9 @@ const Pools = () => {
                           </div>
                           <div className="min-w-0">
                             <p className="font-semibold text-sm">{pool.token0} / {pool.token1}</p>
-                            <p className="text-xs text-muted-foreground">{pool.network}</p>
+                            {getShardENS(pool.address) && (
+                              <p className="text-[10px] font-mono text-primary/70">{getShardENS(pool.address)}</p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -519,7 +529,9 @@ const Pools = () => {
                         </div>
                         <div>
                           <p className="font-semibold">{pool.token0} / {pool.token1}</p>
-                          <p className="text-xs text-muted-foreground">{pool.network}</p>
+                          {getShardENS(pool.address) && (
+                            <p className="text-[10px] font-mono text-primary/70 mt-0.5">{getShardENS(pool.address)}</p>
+                          )}
                         </div>
                       </div>
                       <div className="col-span-1">
@@ -545,7 +557,7 @@ const Pools = () => {
                     {/* Expanded Row - visible on all screen sizes */}
                     {expandedPoolId === pool.id && (
                       <div className="border-b border-border/50 bg-muted/20 px-4 sm:px-6 py-4">
-                        <div className="max-w-5xl">
+                        <div className="w-full">
                           {poolDetails[pool.id]?.loading && (
                             <div className="flex items-center justify-center py-8">
                               <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
@@ -562,25 +574,33 @@ const Pools = () => {
                           {poolDetails[pool.id] && !poolDetails[pool.id].loading && !poolDetails[pool.id].error && (
                             <div className="space-y-4">
                               {/* Pool Info Row */}
-                              <div className="text-sm">
-                                <span className="text-muted-foreground">Pool Address: </span>
-                                <span className="font-mono text-xs text-primary">{pool.address.slice(0, 6)}...{pool.address.slice(-4)}</span>
-                                <button
-                                  onClick={() => copyToClipboard(pool.address, 'Pool address')}
-                                  className="text-primary hover:text-primary/80 p-1 ml-1"
-                                >
-                                  <Copy className="w-3 h-3 inline" />
-                                </button>
-                                <button
-                                  onClick={() => window.open(`https://explorer.testnet.riselabs.xyz/address/${pool.address}`, '_blank')}
-                                  className="text-primary hover:text-primary/80 p-1"
-                                >
-                                  <ExternalLink className="w-3 h-3 inline" />
-                                </button>
+                              <div className="text-sm flex flex-wrap items-center gap-x-6 gap-y-2">
+                                <div>
+                                  <span className="text-muted-foreground">Pool Address: </span>
+                                  <span className="font-mono text-xs text-primary">{pool.address}</span>
+                                  <button
+                                    onClick={() => copyToClipboard(pool.address, 'Pool address')}
+                                    className="text-primary hover:text-primary/80 p-1 ml-1"
+                                  >
+                                    <Copy className="w-3 h-3 inline" />
+                                  </button>
+                                  <button
+                                    onClick={() => window.open(`https://explorer.testnet.riselabs.xyz/address/${pool.address}`, '_blank')}
+                                    className="text-primary hover:text-primary/80 p-1"
+                                  >
+                                    <ExternalLink className="w-3 h-3 inline" />
+                                  </button>
+                                </div>
+                                {getShardENS(pool.address) && (
+                                  <div>
+                                    <span className="text-muted-foreground">ENS Name: </span>
+                                    <span className="font-mono text-xs text-primary">{getShardENS(pool.address)}</span>
+                                  </div>
+                                )}
                               </div>
 
-                              {/* Reserves - Compact Grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                              {/* Reserves - Responsive Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-6 gap-3 text-sm">
                                 <div>
                                   <p className="text-xs text-muted-foreground mb-1">{pool.token0} Reserve</p>
                                   <p className="font-semibold">{poolDetails[pool.id].reserves.reserveA}</p>
@@ -593,21 +613,19 @@ const Pools = () => {
                                   <p className="text-xs text-muted-foreground mb-1">LP Token Supply</p>
                                   <p className="font-semibold">{poolDetails[pool.id].totalSupply}</p>
                                 </div>
-                              </div>
-
-                              {/* Price Ratio */}
-                              <div className="text-sm">
-                                <span className="text-muted-foreground">Price: </span>
-                                <span className="font-semibold">
-                                  1 {pool.token0} = {(parseFloat(poolDetails[pool.id].reserves.reserveB) / parseFloat(poolDetails[pool.id].reserves.reserveA)).toFixed(6)} {pool.token1}
-                                </span>
+                                <div className="md:col-span-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Price</p>
+                                  <p className="font-semibold">
+                                    1 {pool.token0} = {(parseFloat(poolDetails[pool.id].reserves.reserveB) / parseFloat(poolDetails[pool.id].reserves.reserveA)).toFixed(6)} {pool.token1}
+                                  </p>
+                                </div>
                               </div>
 
                               {/* Only show SAMM params if available */}
                               {poolDetails[pool.id].sammParams.beta1 !== 'N/A' && (
                                 <div>
                                   <p className="text-xs text-muted-foreground mb-2">SAMM Parameters</p>
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 text-xs">
                                     <div>
                                       <span className="text-muted-foreground">Beta1: </span>
                                       <span className="font-mono">{poolDetails[pool.id].sammParams.beta1}</span>
