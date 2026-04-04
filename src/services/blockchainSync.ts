@@ -366,7 +366,13 @@ export class BlockchainSyncService {
     try {
       console.log('[BlockchainSync] Starting automatic sync for:', userAddress);
 
-      const routerAddress = getCrossPoolRouter(chainId);
+      let routerAddress: Address;
+      try {
+        routerAddress = getCrossPoolRouter(chainId);
+      } catch {
+        console.warn('[BlockchainSync] Chain not supported for sync:', chainId);
+        return [];
+      }
       const syncedTransactions: StoredTransaction[] = [];
 
       // Try explorer API first

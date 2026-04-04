@@ -17,6 +17,26 @@ interface TokenFaucetModalProps {
   onClose: () => void;
 }
 
+// Sepolia faucet links for test tokens
+const SEPOLIA_FAUCETS = {
+  ETH: [
+    { name: 'Alchemy', url: 'https://www.alchemy.com/faucets/ethereum-sepolia' },
+    { name: 'Sepolia Faucet', url: 'https://sepoliafaucet.com/' },
+  ],
+  LINK: [
+    { name: 'Chainlink', url: 'https://faucets.chain.link/sepolia' },
+  ],
+  USDC: [
+    { name: 'Etherscan (mint)', url: 'https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238#writeContract' },
+  ],
+  USDT: [
+    { name: 'Etherscan (mint)', url: 'https://sepolia.etherscan.io/address/0x7169D38820dfd117C3FA1f22a697dBA58d90BA06#writeContract' },
+  ],
+  DAI: [
+    { name: 'Etherscan (mint)', url: 'https://sepolia.etherscan.io/address/0x68194a729C2450ad26072b3D33ADaCbcef39D574#writeContract' },
+  ],
+};
+
 // Build address → Token metadata map from the known token list
 const riseTokenMap = Object.fromEntries(
   (commonTokens[riseChain.id] ?? []).map((t) => [t.address.toLowerCase(), t])
@@ -50,6 +70,7 @@ const formatCountdown = (s: number): string => {
 
 export function TokenFaucetModal({ isOpen, onClose }: TokenFaucetModalProps) {
   const { isConnected } = useAccount();
+  const [showSepoliaFaucets, setShowSepoliaFaucets] = useState(false);
 
   const {
     canRequest,
@@ -94,12 +115,90 @@ export function TokenFaucetModal({ isOpen, onClose }: TokenFaucetModalProps) {
             </div>
             <div>
               <h2 className="font-bold text-base text-foreground leading-none">Test Token Faucet</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">RiseChain Testnet · 1d cooldown</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {showSepoliaFaucets ? 'Sepolia Testnet' : 'RiseChain Testnet · 1d cooldown'}
+              </p>
             </div>
+          </div>
+          
+          {/* Network Toggle */}
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => setShowSepoliaFaucets(false)}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                !showSepoliaFaucets
+                  ? 'bg-primary/15 text-primary border border-primary/30'
+                  : 'bg-secondary/40 text-muted-foreground border border-border/60 hover:border-border'
+              }`}
+            >
+              RiseChain
+            </button>
+            <button
+              onClick={() => setShowSepoliaFaucets(true)}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                showSepoliaFaucets
+                  ? 'bg-primary/15 text-primary border border-primary/30'
+                  : 'bg-secondary/40 text-muted-foreground border border-border/60 hover:border-border'
+              }`}
+            >
+              Sepolia
+            </button>
           </div>
         </div>
 
         <div className="px-6 py-5 space-y-5">
+
+          {/* ── Sepolia Faucets ────────────────────────────────────── */}
+          {showSepoliaFaucets ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/8 border border-blue-500/20">
+                <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <p className="text-xs text-blue-400">
+                  Sepolia tokens are obtained from external faucets. Click the links below to get test tokens.
+                </p>
+              </div>
+
+              {Object.entries(SEPOLIA_FAUCETS).map(([symbol, faucets]) => (
+                <div key={symbol} className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">{symbol}</p>
+                  <div className="space-y-2">
+                    {faucets.map((faucet) => (
+                      <a
+                        key={faucet.url}
+                        href={faucet.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between px-4 py-3 rounded-xl bg-secondary/40 border border-border/60 hover:border-primary/50 hover:bg-secondary/60 transition-all group"
+                      >
+                        <span className="text-sm text-foreground group-hover:text-primary transition-colors">
+                          {faucet.name}
+                        </span>
+                        <svg
+                          className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          />
+                        </svg>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <p className="text-center text-[11px] text-muted-foreground pt-2">
+                For ERC-20 tokens (USDC, USDT, DAI), connect your wallet on Etherscan and call the mint function
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ── RiseChain Faucet (Original Content) ────────────────────────────────────── */}
 
           {/* ── Not connected ────────────────────────────────────── */}
           {!isConnected && (
@@ -226,6 +325,8 @@ export function TokenFaucetModal({ isOpen, onClose }: TokenFaucetModalProps) {
           <p className="text-center text-[11px] text-muted-foreground">
             Test tokens have no real value · Testnet only
           </p>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
