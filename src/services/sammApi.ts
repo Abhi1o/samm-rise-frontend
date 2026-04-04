@@ -4,6 +4,10 @@
  * Updated to match actual backend endpoints
  */
 
+import type { ComparisonResult, MatrixResult } from '@/types/comparison';
+import type { OracleComparisonResult } from '@/types/oracle';
+import type { Agent, AgentDetail, ShardRegistryEntry } from '@/types/agents';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface TokenInfo {
@@ -370,6 +374,200 @@ class SAMMApiService {
     const response = await fetch(`${this.baseUrl}/price/${tokenA}/${tokenB}`);
     if (!response.ok) throw new Error(`Failed to fetch price for ${tokenA}/${tokenB}`);
     return response.json();
+  }
+
+  // ── Uniswap Comparison ─────────────────────────────────────────────────────
+
+  async getComparison(tokenIn: string, tokenOut: string, amount: string): Promise<ComparisonResult> {
+    const response = await fetch(`${this.baseUrl}/compare/${tokenIn}/${tokenOut}/${amount}`);
+    if (!response.ok) throw new Error(`Failed to fetch comparison for ${tokenIn}→${tokenOut}`);
+    const raw = await response.json();
+
+    // Backend real response shape:
+    // { tokenIn, tokenOut, amountOut, samm: { amountIn, shard, fee, priceImpact, ... },
+    //   sepoliaUniswap: { amountIn, amountOut, routing, ... },
+    //   comparison: { winner:"SAMM"|"Uniswap (Sepolia)"|"Tie", deltaPercent, savingsUSD, ... } }
+    // The model is EXACT-OUTPUT: both protocols give the same amountOut; comparison is on amountIn.
+
+    // If the backend already returns our expected shape (future-proof), pass through
+    if (raw.samm?.amountOut !== undefined && raw.uniswap?.amountOut !== undefined && raw.delta) {
+      return raw as ComparisonResult;
+    }
+
+    const amountOut = raw.amountOut ?? amount;
+    const cmp = raw.comparison ?? {};
+    const sepoliaUni = raw.sepoliaUniswap ?? raw.mainnetUniswap ?? {};
+
+    // Normalise winner string: "SAMM" → 'samm', "Uniswap*" → 'uniswap', "Tie" → 'equal'
+    let winner: 'samm' | 'uniswap' | 'equal' = 'equal';
+    const w = String(cmp.winner ?? '').toLowerCase();
+    if (w.includes('samm')) winner = 'samm';
+    else if (w.includes('uniswap')) winner = 'uniswap';
+
+    const deltaAbs = Math.abs(
+      parseFloat(raw.samm?.amountIn ?? '0') - parseFloat(sepoliaUni.amountIn ?? '0')
+    ).toFixed(6);
+
+    return {
+      tokenIn,
+      tokenOut,
+      amount,
+      samm: {
+        amountOut,                                        // same output (exact-output model)
+        fee: String(raw.samm?.fee ?? '0'),
+        route: raw.samm?.shard
+          ? `SAMM shard ${String(raw.samm.shard).slice(0, 8)}...`
+          : `${tokenIn} → ${tokenOut}`,
+        priceImpact: String(raw.samm?.priceImpact ?? '0'),
+      },
+      uniswap: {
+        amountOut: sepoliaUni.amountIn
+          ? amountOut                                     // same output; cost comparison is in amountIn
+          : '0',
+        fee: sepoliaUni.routing ?? 'Permit2',
+        route: `${tokenIn} → ${tokenOut} (Sepolia)`,
+        priceImpact: '0',
+      },
+      delta: {
+        percentage: String(Math.abs(parseFloat(cmp.deltaPercent ?? '0'))),
+        absolute: deltaAbs,
+      },
+      winner,
+    };
+  }
+
+  async getComparisonMatrix(): Promise<MatrixResult> {
+    const response = await fetch(`${this.baseUrl}/compare/matrix`);
+    if (!response.ok) throw new Error('Failed to fetch comparison matrix');
+    return response.json();
+  }
+
+  // ── Chainlink Oracle ────────────────────────────────────────────────────────
+
+  async getOracleComparison(): Promise<OracleComparisonResult> {
+    const response = await fetch(`${this.baseUrl}/oracle/chainlink`);
+    if (!response.ok) throw new Error('Failed to fetch Chainlink oracle data');
+    const raw = await response.json();
+
+    // Normalize: backend may return { rows: OracleRow[] } (our spec) OR
+    // the flat format { chainlink: {ETH: price}, coingecko: {...}, deviation: {...} }
+    if (Array.isArray(raw.rows)) {
+      return raw as OracleComparisonResult;
+    }
+
+    // Transform flat backend format → OracleComparisonResult
+    const TOKEN_KEYS = ['ETH', 'BTC', 'USDC', 'DAI', 'LINK'];
+    const chainlink: Record<string, number> = raw.chainlink ?? {};
+    const coingecko: Record<string, number> = raw.coingecko ?? {};
+    const onchain: Record<string, number> = raw.onchain ?? {};
+    const deviation: Record<string, { pct?: string; percentage?: string; isHighDeviation?: boolean }> = raw.deviation ?? {};
+
+    const rows: OracleComparisonResult['rows'] = TOKEN_KEYS.map((token) => {
+      const dev = deviation[token] ?? {};
+      const pct = dev.pct ?? dev.percentage ?? '0';
+      return {
+        token,
+        chainlinkPrice: chainlink[token] ?? 0,
+        coingeckoPrice: coingecko[token] ?? 0,
+        onchainPrice: onchain[token] ?? 0,
+        deviationPct: pct,
+        isHighDeviation: dev.isHighDeviation ?? Math.abs(parseFloat(pct)) > 0.5,
+        usingFallback: (chainlink[token] ?? 0) === 0,
+      };
+    });
+
+    return {
+      rows,
+      lastUpdated: raw.lastUpdated ?? new Date().toISOString(),
+      creWorkflowStatus: raw.creWorkflowStatus ?? raw.cre_workflow_status ?? 'inactive',
+      lastTriggered: raw.lastTriggered ?? raw.last_triggered ?? new Date().toISOString(),
+      shardsMonitored: raw.shardsMonitored ?? raw.shards_monitored ?? 20,
+    };
+  }
+
+  // ── Uniswap Sepolia Permit2 Swap ────────────────────────────────────────────
+
+  async prepareSepolia(tokenIn: string, tokenOut: string, amount: string, userAddress: string): Promise<{
+    quote: any;
+    permitData?: any;
+    routing: string;
+    needsPermit2Signature: boolean;
+    needsTokenApproval?: boolean;
+    permit2Address?: string;
+    tokenIn?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/swap/sepolia/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAddress, tokenIn, tokenOut, amount }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to prepare Uniswap swap');
+    }
+    return response.json();
+  }
+
+  async executeSepolia(
+    quote: any,
+    signature: string | undefined,
+    permitData: any | undefined,
+    routing: string
+  ): Promise<{
+    unsignedTransaction: {
+      to: string;
+      data: string;
+      value: string;
+      gasLimit?: string | number;
+      chainId?: number;
+    };
+  }> {
+    const response = await fetch(`${this.baseUrl}/swap/sepolia/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quote, signature, permitData, routing }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to get Uniswap swap calldata');
+    }
+    return response.json();
+  }
+
+  // ── ENS Agent Registry ──────────────────────────────────────────────────────
+
+  async getAgents(): Promise<Agent[]> {
+    const response = await fetch(`${this.baseUrl}/agents`);
+    if (!response.ok) throw new Error('Failed to fetch agents');
+    return response.json();
+  }
+
+  async getAgent(name: string): Promise<AgentDetail> {
+    const response = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(name)}`);
+    if (!response.ok) throw new Error(`Failed to fetch agent: ${name}`);
+    return response.json();
+  }
+
+  async getShardRegistry(): Promise<ShardRegistryEntry[]> {
+    const response = await fetch(`${this.baseUrl}/registry/shards`);
+    if (!response.ok) throw new Error('Failed to fetch shard registry');
+    const raw = await response.json();
+    // Backend returns { enabled, count, shards: [{pair, tier, ensName, shardAddress, active}] }
+    // Normalize to ShardRegistryEntry[] with consistent `address` field
+    const normalize = (arr: any[]): ShardRegistryEntry[] =>
+      arr.map(s => ({
+        ensName: s.ensName ?? '',
+        address: s.shardAddress ?? s.address ?? s.contractAddress ?? '',
+        tvl: s.tvl ?? '0',
+        tier: s.tier ?? '',
+        pair: s.pair ?? '',
+      }));
+
+    if (Array.isArray(raw)) return normalize(raw);
+    if (Array.isArray(raw.shards)) return normalize(raw.shards);
+    if (Array.isArray(raw.registry)) return normalize(raw.registry);
+    if (Array.isArray(raw.data)) return normalize(raw.data);
+    return [];
   }
 
   // Legacy methods for backward compatibility
