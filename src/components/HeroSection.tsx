@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import EnhancedSwapCard from "./EnhancedSwapCard";
 import LiquidBlob from "./LiquidBlob";
+import { CREStatusStrip } from "./CREStatusStrip";
 
 // ── Animated counter hook ────────────────────────────────────────────────────
 function useCounter(target: number, duration = 1800, start = false) {
@@ -77,17 +78,20 @@ const HeroSection = () => {
           <div className="text-center lg:text-left space-y-6 lg:space-y-8">
 
             {/* Live network badge */}
-            <div
-              className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full border border-border bg-background/40 backdrop-blur-sm animate-fade-in"
-              style={{ animationDelay: "0s" }}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-              </span>
-              <span className="text-xs font-mono text-muted-foreground tracking-widest uppercase">
-                Live · RiseChain Testnet
-              </span>
+            <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
+              <div
+                className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full border border-border bg-background/40 backdrop-blur-sm animate-fade-in"
+                style={{ animationDelay: "0s" }}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                </span>
+                <span className="text-xs font-mono text-muted-foreground tracking-widest uppercase">
+                  Live · RiseChain Testnet
+                </span>
+              </div>
+              <CREStatusStrip />
             </div>
 
             {/* Headline */}

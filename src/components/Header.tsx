@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useEnsName, useChainId } from "wagmi";
 import { formatAddress } from "@/utils/formatters";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { chainMetadata } from "@/config/chains";
@@ -12,13 +13,18 @@ import FaucetButton from "./FaucetButton";
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
-  const { selectedNetwork, availableNetworks, isLoading, switchNetwork } = useNetwork();
+  const { selectedNetwork, availableNetworks, isLoading, switchNetwork, selectedRoute } = useNetwork();
+  const { address: connectedAddress } = useAccount();
+  const { data: ensName } = useEnsName({ address: connectedAddress, chainId: 1 });
+  const walletChainId = useChainId();
 
-  // Get current network metadata
-  const currentNetworkMeta = selectedNetwork ? chainMetadata[selectedNetwork.chainId] : null;
+  // When Uniswap route is selected, show Sepolia in the header regardless of wallet chain.
+  // The wallet only switches to Sepolia when the swap fires, but the user picked Sepolia route.
+  const activeChainId = selectedRoute === 'uniswap' ? 11155111 : (walletChainId || selectedNetwork?.chainId);
+  const currentNetworkMeta = activeChainId ? chainMetadata[activeChainId] : null;
   const networkIcon = currentNetworkMeta?.icon || "🚀";
   const networkColor = currentNetworkMeta?.color || "bg-orange-500";
-  const networkName = selectedNetwork?.displayName || "Loading...";
+  const networkName = selectedRoute === 'uniswap' ? 'Sepolia' : (currentNetworkMeta?.name || selectedNetwork?.displayName || "Loading...");
 
   // Handle network switching
   const handleNetworkSwitch = async (chainId: number) => {
@@ -79,15 +85,15 @@ const Header = () => {
                   {isLoading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                    networkIcon.startsWith('data:') || networkIcon.startsWith('/') ? (
-                      <img src={networkIcon} alt={networkName} className="w-3 h-4 object-cover" />
+                    networkIcon.startsWith('data:') || networkIcon.startsWith('/') || networkIcon.startsWith('http') ? (
+                      <img src={networkIcon} alt={networkName} className="w-4 h-4 object-cover rounded-full" />
                     ) : (
                       <div className={`w-5 h-5 rounded-full ${networkColor} flex items-center justify-center text-xs`}>
                         {networkIcon}
                       </div>
                     )
                   )}
-                  <span className="text-sm font-medium">Rise</span>
+                  <span className="text-sm font-medium">{networkName}</span>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
                 {networkDropdownOpen && !isLoading && (
@@ -108,8 +114,8 @@ const Header = () => {
                               isSelected ? 'bg-secondary/30' : ''
                             }`}
                           >
-                            {meta?.icon?.startsWith('data:') || meta?.icon?.startsWith('/') ? (
-                              <img src={meta.icon} alt={network.displayName} className="w-5 h-6 object-cover" />
+                            {meta?.icon?.startsWith('data:') || meta?.icon?.startsWith('/') || meta?.icon?.startsWith('http') ? (
+                              <img src={meta.icon} alt={network.displayName} className="w-6 h-6 object-cover rounded-full" />
                             ) : (
                               <div className={`w-6 h-6 rounded-full ${meta?.color || 'bg-gray-500'} flex items-center justify-center text-sm`}>
                                 {meta?.icon || '🌐'}
@@ -167,7 +173,7 @@ const Header = () => {
                         return (
                           <Button variant="wallet" size="lg" onClick={openAccountModal}>
                             <Wallet className="w-4 h-4 mr-2" />
-                            {formatAddress(account.address)}
+                            {ensName ?? formatAddress(account.address)}
                           </Button>
                         );
                       })()}
@@ -247,7 +253,7 @@ const Header = () => {
                         onClick={connected ? openAccountModal : openConnectModal}
                       >
                         <Wallet className="w-4 h-4 mr-2" />
-                        {connected ? formatAddress(account.address) : 'Connect Wallet'}
+                        {connected ? (ensName ?? formatAddress(account.address)) : 'Connect Wallet'}
                       </Button>
                     );
                   }}

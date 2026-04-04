@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useChainId, useSwitchChain } from 'wagmi';
 import { useToast } from '@/hooks/use-toast';
 import { riseChain } from '@/config/chains';
+import { sepolia } from 'wagmi/chains';
+
+export type SwapRoute = 'samm' | 'uniswap';
 
 interface ChainInfo {
   chainId: number;
@@ -16,13 +19,13 @@ interface NetworkContextType {
   error: string | null;
   switchNetwork: (chainId: number) => Promise<void>;
   refetchNetworks: () => Promise<void>;
+  selectedRoute: SwapRoute;
+  setSelectedRoute: (route: SwapRoute) => void;
 }
 
 const NetworkContext = createContext<NetworkContextType | undefined>(undefined);
 
 const NETWORK_STORAGE_KEY = 'samm_selected_network';
-const NETWORKS_CACHE_KEY = 'samm_available_networks';
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 interface NetworkProviderProps {
   children: ReactNode;
@@ -33,87 +36,40 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
   const [availableNetworks, setAvailableNetworks] = useState<ChainInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRoute, setSelectedRoute] = useState<SwapRoute>('samm');
   
   const walletChainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { toast } = useToast();
 
-  // Fetch available networks from backend
-  const fetchNetworks = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  // Static network list — RiseChain is the primary DEX; Sepolia is used for the Uniswap route
+  const AVAILABLE_NETWORKS: ChainInfo[] = [
+    { chainId: riseChain.id, name: 'risechain', displayName: 'RiseChain Testnet' },
+    { chainId: sepolia.id,   name: 'sepolia',   displayName: 'Sepolia Testnet' },
+  ];
 
-      // Check cache first
-      const cached = localStorage.getItem(NETWORKS_CACHE_KEY);
-      if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          setAvailableNetworks(data);
-          setIsLoading(false);
-          return data;
-        }
-      }
-
-      // SAMM is single-chain (RiseChain only)
-      // No need to fetch from backend
-      const networks: ChainInfo[] = [
-        {
-          chainId: riseChain.id,
-          name: 'risechain',
-          displayName: 'RiseChain Testnet',
-        },
-      ];
-
-      // Cache the result
-      localStorage.setItem(
-        NETWORKS_CACHE_KEY,
-        JSON.stringify({ data: networks, timestamp: Date.now() })
-      );
-
-      setAvailableNetworks(networks);
-      setIsLoading(false);
-      return networks;
-    } catch (err: any) {
-      console.error('Failed to fetch networks:', err);
-      setError(err.message || 'Failed to fetch networks');
-      
-      // Fallback to RiseChain only
-      const fallbackNetwork: ChainInfo = {
-        chainId: riseChain.id,
-        name: 'risechain',
-        displayName: 'RiseChain Testnet',
-      };
-      
-      setAvailableNetworks([fallbackNetwork]);
-      setIsLoading(false);
-      return [fallbackNetwork];
-    }
+  const fetchNetworks = () => {
+    setAvailableNetworks(AVAILABLE_NETWORKS);
+    setIsLoading(false);
+    return AVAILABLE_NETWORKS;
   };
 
-  // Initialize: fetch networks and restore selected network
+  // Initialize: set networks and restore selected network from localStorage
   useEffect(() => {
-    const initialize = async () => {
-      const networks = await fetchNetworks();
-      
-      // Try to restore from localStorage
-      const savedChainId = localStorage.getItem(NETWORK_STORAGE_KEY);
-      if (savedChainId) {
-        const saved = networks.find(n => n.chainId === parseInt(savedChainId));
-        if (saved) {
-          setSelectedNetwork(saved);
-          return;
-        }
-      }
+    const networks = fetchNetworks();
 
-      // Default to first network (RiseChain)
-      if (networks.length > 0) {
-        setSelectedNetwork(networks[0]);
-        localStorage.setItem(NETWORK_STORAGE_KEY, networks[0].chainId.toString());
+    const savedChainId = localStorage.getItem(NETWORK_STORAGE_KEY);
+    if (savedChainId) {
+      const saved = networks.find(n => n.chainId === parseInt(savedChainId));
+      if (saved) {
+        setSelectedNetwork(saved);
+        return;
       }
-    };
+    }
 
-    initialize();
+    // Default to RiseChain
+    setSelectedNetwork(networks[0]);
+    localStorage.setItem(NETWORK_STORAGE_KEY, networks[0].chainId.toString());
   }, []);
 
   // Sync with wallet chain changes
@@ -181,9 +137,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
   };
 
   const refetchNetworks = async () => {
-    // Clear cache
-    localStorage.removeItem(NETWORKS_CACHE_KEY);
-    await fetchNetworks();
+    fetchNetworks();
   };
 
   return (
@@ -195,6 +149,8 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
         error,
         switchNetwork,
         refetchNetworks,
+        selectedRoute,
+        setSelectedRoute,
       }}
     >
       {children}
