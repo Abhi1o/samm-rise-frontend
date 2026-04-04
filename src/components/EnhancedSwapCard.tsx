@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle, TriangleAlert, TrendingUp, TrendingDown } from "lucide-react";
-import { useSwapCardComparison } from "@/hooks/useComparison";
+import { ArrowDown, Settings, RefreshCw, Info, Zap, CheckCircle2, AlertCircle, Loader2, XCircle, TriangleAlert, TrendingUp } from "lucide-react";
 import { useAccount, useChainId, useSignTypedData, useSendTransaction, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
 import { Address, formatUnits, erc20Abi } from "viem";
 import TokenInput from "./TokenInput";
@@ -48,6 +47,8 @@ const EnhancedSwapCard = () => {
   const [uniswapError, setUniswapError] = useState<string | null>(null);
   // Cached prepareSepolia result — reused by handleUniswapSwap to avoid a double API call
   const [preparedSepoliaData, setPreparedSepoliaData] = useState<any>(null);
+  // Parsed Uniswap quote: { amountOut, gasFeeUsd, routing }
+  const [uniswapQuoteData, setUniswapQuoteData] = useState<any>(null);
   // Sepolia balances: symbol → formatted amount (e.g. { USDC: "10.50", WETH: "0.05" })
   const [sepoliaBalances, setSepoliaBalances] = useState<Record<string, string>>({});
   const [sepoliaBalancesLoading, setSepoliaBalancesLoading] = useState(false);
@@ -172,56 +173,22 @@ const EnhancedSwapCard = () => {
     }
   }, [selectedNetwork]);
 
-  // Fetch quote when amount changes (debounced)
+  // Fetch both SAMM and Uniswap quotes whenever amount or tokens change (debounced)
   useEffect(() => {
-    // Clear any pending debounce
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    // Validate input amount exists and is positive
     if (!fromValue || parseFloat(fromValue) <= 0) {
-      setToValue("");
-      setQuoteData(null);
-      setRouteInfo("");
+      setToValue(""); setQuoteData(null); setUniswapQuoteData(null); setRouteInfo(""); setPreparedSepoliaData(null);
       return;
     }
-
-    // Validate token addresses exist
     if (!fromToken.address || !toToken.address) {
-      setToValue("");
-      setQuoteData(null);
-      setRouteInfo("");
-      return;
+      setToValue(""); setQuoteData(null); setUniswapQuoteData(null); setRouteInfo(""); return;
     }
 
-    // Wait for balance to load before validating
-    if (fromBalanceLoading) {
-      setToValue("");
-      setQuoteData(null);
-      setRouteInfo("");
-      return;
-    }
-
-    // Validate user has sufficient balance BEFORE fetching quote
-    const inputAmount = parseFloat(fromValue);
-    const userBalance = parseFloat(fromToken.balance);
-
-    if (inputAmount > userBalance) {
-      // Don't fetch quote if insufficient balance — button UI already shows the error
-      setToValue("");
-      setQuoteData(null);
-      setRouteInfo("");
-      return;
-    }
-
-    // All validations passed — debounce the fetch
-    debounceRef.current = setTimeout(() => {
-      fetchQuote();
-    }, QUOTE_DEBOUNCE_DELAY);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [fromValue, fromToken.address, toToken.address, fromToken.balance, fromBalanceLoading]);
+    debounceRef.current = setTimeout(() => { fetchQuote(); }, QUOTE_DEBOUNCE_DELAY);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromValue, fromToken.address, toToken.address, userAddress]);
 
 
   // Fetch Sepolia token balances directly from Sepolia blockchain
@@ -285,234 +252,143 @@ const EnhancedSwapCard = () => {
 
 
   const fetchQuote = async () => {
-    if (!selectedNetwork) {
-      toast({
-        title: "Network Not Selected",
-        description: "Please select a network first",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!fromValue || parseFloat(fromValue) <= 0) return;
+    if (!fromToken.address || !toToken.address) return;
 
-    try {
-      setLoading(true);
-      
-      // Validate inputs
-      if (!fromValue || parseFloat(fromValue) <= 0) {
-        console.log('Invalid amount:', fromValue);
-        setToValue("");
-        setQuoteData(null);
-        return;
-      }
+    setLoading(true);
 
-      if (!fromToken.address || !toToken.address) {
-        console.error('Missing token addresses:', { fromToken, toToken });
-        throw new Error('Token addresses not configured');
-      }
-
-      // Convert amount to smallest unit based on token decimals
-      // IMPORTANT: Use string manipulation to avoid JavaScript number precision loss
-      // For 18-decimal tokens, Math.floor(parseFloat(value) * 10^18) loses precision
-      let amountInSmallestUnit: string;
-      
-      if (fromToken.decimals <= 8) {
-        // For tokens with ≤8 decimals (like USDC, USDT, WBTC), Math is safe
-        amountInSmallestUnit = Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
-      } else {
-        // For tokens with >8 decimals (like WETH, DAI, LINK), use string manipulation
-        const [whole = '0', fraction = ''] = fromValue.split('.');
-        const paddedFraction = fraction.padEnd(fromToken.decimals, '0').slice(0, fromToken.decimals);
-        amountInSmallestUnit = whole + paddedFraction;
-        // Remove leading zeros
-        amountInSmallestUnit = BigInt(amountInSmallestUnit).toString();
-      }
-      
-      console.log('Fetching quote:', {
-        chainId: selectedNetwork.chainId,
-        amount: amountInSmallestUnit,
-        fromToken: fromToken.symbol,
-        toToken: toToken.symbol,
-        fromDecimals: fromToken.decimals,
-        toDecimals: toToken.decimals
-      });
-      
-      // Convert amountIn to human-readable format
-      // CRITICAL FIX: Use formatUnits for precision with high-decimal tokens
-      // parseFloat loses precision for 18-decimal tokens like WETH
-      const amountInHuman = formatUnits(BigInt(amountInSmallestUnit), fromToken.decimals);
-      
-      // CRITICAL: Backend uses "exact output" model, but UI is "exact input"
-      // Solution: Use a simple estimation for the output amount
-      // The backend will calculate the exact quote based on actual pool reserves
-      
-      // Simple estimation: assume 1:1 ratio for stablecoins, use price ratios for others
-      // This is just for the initial quote request - backend will return accurate values
-      let estimatedOut: number;
-      
-      // Try to get a rough estimate based on token prices or direct pool
+    // ── Helper: SAMM (RiseChain) quote ──────────────────────────────────────
+    const doSammFetch = async (): Promise<string | null> => {
+      if (!selectedNetwork) return null;
       try {
-        // Try to get pool reserves for direct estimation
-        const poolsResponse = await sammApi.getPoolsForPair(fromToken.symbol, toToken.symbol);
-        if (poolsResponse.shards && poolsResponse.shards.length > 0) {
-          // Use the largest pool for estimation (most accurate pricing)
-          const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
-          
-          // CRITICAL FIX: Check which reserve corresponds to which token
-          // The pool might be inverted (tokenA/tokenB order doesn't match our fromToken/toToken order)
-          let reserveIn, reserveOut;
-          if (largestPool.tokenA === fromToken.symbol) {
-            // Pool is: fromToken (A) / toToken (B)
-            reserveIn = parseFloat(largestPool.reserveA);
-            reserveOut = parseFloat(largestPool.reserveB);
-          } else {
-            // Pool is inverted: toToken (A) / fromToken (B)
-            reserveIn = parseFloat(largestPool.reserveB);
-            reserveOut = parseFloat(largestPool.reserveA);
-          }
-          
-          // Constant product formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
-          const amountInFloat = parseFloat(amountInHuman);
-          estimatedOut = (amountInFloat * reserveOut) / (reserveIn + amountInFloat);
-          
-          console.log('Direct pool estimation:', {
-            amountIn: amountInFloat,
-            reserveIn,
-            reserveOut,
-            estimatedOut
-          });
+        let amountInSmallestUnit: string;
+        if (fromToken.decimals <= 8) {
+          amountInSmallestUnit = Math.floor(parseFloat(fromValue) * Math.pow(10, fromToken.decimals)).toString();
         } else {
-          throw new Error('No direct pool, will use multi-hop estimation');
+          const [whole = '0', fraction = ''] = fromValue.split('.');
+          const paddedFraction = fraction.padEnd(fromToken.decimals, '0').slice(0, fromToken.decimals);
+          amountInSmallestUnit = BigInt(whole + paddedFraction).toString();
         }
-      } catch (error) {
-        // No direct pool exists, calculate multi-hop estimation using actual pool reserves
-        console.log('No direct pool found, calculating multi-hop estimation from pool reserves');
-        
-        const amountInFloat = parseFloat(amountInHuman);
-        
-        // Try common intermediary tokens (USDC, WETH, USDT)
-        const intermediaries = ['USDC', 'WETH', 'USDT'];
-        let foundRoute = false;
-        
-        for (const intermediate of intermediaries) {
-          if (intermediate === fromToken.symbol || intermediate === toToken.symbol) continue;
-          
-          try {
-            // Check if both legs exist and get their reserves
-            const leg1Response = await sammApi.getPoolsForPair(fromToken.symbol, intermediate);
-            const leg2Response = await sammApi.getPoolsForPair(intermediate, toToken.symbol);
-            
-            if (leg1Response.shards?.length > 0 && leg2Response.shards?.length > 0) {
-              // Calculate output through this route
-              const pool1 = leg1Response.shards[leg1Response.shards.length - 1];
-              const pool2 = leg2Response.shards[leg2Response.shards.length - 1];
-              
-              // CRITICAL FIX: Check which reserve corresponds to which token
-              // The pool might be inverted (tokenA/tokenB order doesn't match our fromToken/toToken order)
-              
-              // First hop: fromToken → intermediate
-              let reserve1In, reserve1Out;
-              if (pool1.tokenA === fromToken.symbol) {
-                // Pool is: fromToken (A) / intermediate (B)
-                reserve1In = parseFloat(pool1.reserveA);
-                reserve1Out = parseFloat(pool1.reserveB);
-              } else {
-                // Pool is inverted: intermediate (A) / fromToken (B)
-                reserve1In = parseFloat(pool1.reserveB);
-                reserve1Out = parseFloat(pool1.reserveA);
-              }
-              const intermediateAmount = (amountInFloat * reserve1Out) / (reserve1In + amountInFloat);
-              
-              // Second hop: intermediate → toToken
-              let reserve2In, reserve2Out;
-              if (pool2.tokenA === intermediate) {
-                // Pool is: intermediate (A) / toToken (B)
-                reserve2In = parseFloat(pool2.reserveA);
-                reserve2Out = parseFloat(pool2.reserveB);
-              } else {
-                // Pool is inverted: toToken (A) / intermediate (B)
-                reserve2In = parseFloat(pool2.reserveB);
-                reserve2Out = parseFloat(pool2.reserveA);
-              }
-              estimatedOut = (intermediateAmount * reserve2Out) / (reserve2In + intermediateAmount);
-              
-              console.log('Multi-hop estimation via', intermediate, ':', {
-                amountIn: amountInFloat,
-                intermediateAmount,
-                estimatedOut,
-                route: `${fromToken.symbol} → ${intermediate} → ${toToken.symbol}`
-              });
-              
-              foundRoute = true;
-              break;
+
+        const amountInHuman = formatUnits(BigInt(amountInSmallestUnit), fromToken.decimals);
+        let estimatedOut: number;
+
+        try {
+          const poolsResponse = await sammApi.getPoolsForPair(fromToken.symbol, toToken.symbol);
+          if (poolsResponse.shards && poolsResponse.shards.length > 0) {
+            const largestPool = poolsResponse.shards[poolsResponse.shards.length - 1];
+            let reserveIn: number, reserveOut: number;
+            if (largestPool.tokenA === fromToken.symbol) {
+              reserveIn = parseFloat(largestPool.reserveA);
+              reserveOut = parseFloat(largestPool.reserveB);
+            } else {
+              reserveIn = parseFloat(largestPool.reserveB);
+              reserveOut = parseFloat(largestPool.reserveA);
             }
-          } catch (err) {
-            continue;
+            const amountInFloat = parseFloat(amountInHuman);
+            estimatedOut = (amountInFloat * reserveOut) / (reserveIn + amountInFloat);
+          } else {
+            throw new Error('No direct pool');
           }
+        } catch {
+          const amountInFloat = parseFloat(amountInHuman);
+          const intermediaries = ['USDC', 'WETH', 'USDT'];
+          let foundRoute = false;
+          estimatedOut = amountInFloat;
+
+          for (const intermediate of intermediaries) {
+            if (intermediate === fromToken.symbol || intermediate === toToken.symbol) continue;
+            try {
+              const leg1Response = await sammApi.getPoolsForPair(fromToken.symbol, intermediate);
+              const leg2Response = await sammApi.getPoolsForPair(intermediate, toToken.symbol);
+              if (leg1Response.shards?.length > 0 && leg2Response.shards?.length > 0) {
+                const pool1 = leg1Response.shards[leg1Response.shards.length - 1];
+                const pool2 = leg2Response.shards[leg2Response.shards.length - 1];
+                let reserve1In: number, reserve1Out: number;
+                if (pool1.tokenA === fromToken.symbol) {
+                  reserve1In = parseFloat(pool1.reserveA); reserve1Out = parseFloat(pool1.reserveB);
+                } else {
+                  reserve1In = parseFloat(pool1.reserveB); reserve1Out = parseFloat(pool1.reserveA);
+                }
+                const intermediateAmount = (amountInFloat * reserve1Out) / (reserve1In + amountInFloat);
+                let reserve2In: number, reserve2Out: number;
+                if (pool2.tokenA === intermediate) {
+                  reserve2In = parseFloat(pool2.reserveA); reserve2Out = parseFloat(pool2.reserveB);
+                } else {
+                  reserve2In = parseFloat(pool2.reserveB); reserve2Out = parseFloat(pool2.reserveA);
+                }
+                estimatedOut = (intermediateAmount * reserve2Out) / (reserve2In + intermediateAmount);
+                foundRoute = true;
+                break;
+              }
+            } catch { continue; }
+          }
+          if (!foundRoute) estimatedOut = amountInFloat;
         }
-        
-        if (!foundRoute) {
-          // Fallback to simple price-based estimation
-          console.log('Could not find route, using fallback estimation');
-          estimatedOut = amountInFloat; // Assume 1:1 as last resort
-        }
-      }
-      
-      // Step 2: Get exact quote from backend with single API call
-      // The pool reserve estimation above provides a good initial estimate
-      // The backend will calculate the exact quote based on actual pool reserves
-      console.log('Fetching quote with estimated output:', estimatedOut.toFixed(6), toToken.symbol);
-      
-      const quote = await sammApi.getSwapQuote(
-        fromToken.symbol,
-        toToken.symbol,
-        estimatedOut.toFixed(6)
-      );
-      
-      console.log('Quote received:', {
-        expectedInput: quote.expectedAmountIn,
-        output: quote.amountOut
-      });
 
-      // Validate quote response
-      if (!quote || typeof quote !== 'object') {
-        throw new Error('Invalid quote response from backend');
-      }
+        const quote = await sammApi.getSwapQuote(fromToken.symbol, toToken.symbol, estimatedOut.toFixed(6));
+        if (!quote || !quote.expectedAmountIn || !quote.amountOut) return null;
 
-      setQuoteData(quote);
-
-      // Display the output amount from the quote
-      if (quote.expectedAmountIn && quote.amountOut) {
-        const outputAmount = parseFloat(quote.amountOut);
-        setToValue(outputAmount.toFixed(6));
-        
+        setQuoteData(quote);
         if (quote.hops === 1) {
           setRouteInfo(`Direct swap via ${quote.selectedShards?.[0]?.slice(0, 10) || 'pool'}...`);
         } else {
           setRouteInfo(`Multi-hop: ${quote.route?.join(' → ') || 'Unknown route'}`);
         }
-        
-        console.log(`${quote.hops === 1 ? 'Direct' : 'Multi-hop'} swap:`, outputAmount, toToken.symbol);
-      } else {
-        throw new Error('Quote missing expectedAmountIn or amountOut field');
+        return quote.amountOut as string;
+      } catch (err: any) {
+        console.error('[SAMM quote]', err);
+        setQuoteData(null);
+        return null;
       }
-    } catch (error: any) {
-      console.error('Failed to fetch quote:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        fromToken: fromToken.symbol,
-        fromAddress: fromToken.address,
-        toToken: toToken.symbol,
-        toAddress: toToken.address,
-        amount: fromValue
-      });
-      toast({
-        title: "Quote Error",
-        description: error.message || "Failed to fetch swap quote",
-        variant: "destructive",
-      });
-      setToValue("");
-      setQuoteData(null);
+    };
+
+    // ── Helper: Uniswap (Sepolia) quote ─────────────────────────────────────
+    // Effective decimals = fromToken.decimals + toToken.decimals (Uniswap API scaling)
+    const doUniswapFetch = async (): Promise<string | null> => {
+      if (!userAddress) return null;
+      try {
+        const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+        const outputRaw: string = prepared.quote?.output?.amount ?? '0';
+        const effectiveDecimals = fromToken.decimals + toToken.decimals;
+        const outputAmount = parseFloat(formatUnits(BigInt(outputRaw), effectiveDecimals));
+        setPreparedSepoliaData(prepared);
+        setUniswapQuoteData({
+          amountOut: outputAmount.toFixed(6),
+          gasFeeUsd: prepared.quote?.gasFeeUSD,
+          routing: prepared.routing ?? 'CLASSIC',
+        });
+        return outputAmount.toFixed(6);
+      } catch (err: any) {
+        console.error('[Uniswap quote]', err);
+        setUniswapQuoteData(null);
+        setPreparedSepoliaData(null);
+        return null;
+      }
+    };
+
+    try {
+      const [sammOut, uniOut] = await Promise.all([doSammFetch(), doUniswapFetch()]);
+
+      if (!sammOut && !uniOut) {
+        setToValue('');
+        toast({ title: "Quote Error", description: "Unable to get a quote for this pair", variant: "destructive" });
+        return;
+      }
+
+      // Auto-select: more output = better for the user
+      let bestRoute: 'samm' | 'uniswap' = 'samm';
+      let bestOut = sammOut || uniOut || '';
+      if (sammOut && uniOut) {
+        bestRoute = parseFloat(uniOut) > parseFloat(sammOut) ? 'uniswap' : 'samm';
+        bestOut = bestRoute === 'uniswap' ? uniOut : sammOut;
+      } else if (uniOut && !sammOut) {
+        bestRoute = 'uniswap';
+        bestOut = uniOut;
+      }
+
+      setSelectedRoute(bestRoute);
+      setToValue(bestOut);
     } finally {
       setLoading(false);
     }
@@ -582,32 +458,20 @@ const EnhancedSwapCard = () => {
     return ((inputUSD - outputUSD) / inputUSD) * 100;
   }, [fromValue, toValue, fromPrice, toPrice]);
 
-  // Comparison data for route selector.
-  // The backend /compare endpoint only supports DIRECT pools (single-hop).
-  // For multi-hop pairs (hops > 1) it returns 500 — skip the call entirely.
-  // IMPORTANT: /compare uses exact-output model — pass toValue (amountOut), NOT fromValue (amountIn).
-  // If we pass fromValue (e.g. 100 USDC input), backend interprets it as "give me 100 WETH output"
-  // which is ~2000x the actual trade. The badge would be for the wrong trade size entirely.
-  const isDirectSwap = quoteData?.hops === 1;
-  const { data: comparisonData, isLoading: comparisonLoading } = useSwapCardComparison(
-    (quoteData && isDirectSwap && toValue) ? fromToken.symbol : undefined,
-    (quoteData && isDirectSwap && toValue) ? toToken.symbol : undefined,
-    (quoteData && isDirectSwap && toValue) ? toValue : undefined
-  );
-
-  // Auto-select best route when comparison loads ('equal' stays as SAMM)
-  useEffect(() => {
-    if (comparisonData?.winner === 'samm' || comparisonData?.winner === 'uniswap') {
-      setSelectedRoute(comparisonData.winner);
-    }
-  }, [comparisonData?.winner]);
+  // Derive best-route badge directly from both quotes (no broken /compare endpoint needed)
+  const sammAmountFloat = quoteData?.amountOut ? parseFloat(quoteData.amountOut) : 0;
+  const uniAmountFloat = uniswapQuoteData?.amountOut ? parseFloat(uniswapQuoteData.amountOut) : 0;
+  const bothQuotesReady = sammAmountFloat > 0 && uniAmountFloat > 0;
+  const sammIsBest = !bothQuotesReady ? sammAmountFloat > 0 : sammAmountFloat >= uniAmountFloat;
+  const uniIsBest = bothQuotesReady && uniAmountFloat > sammAmountFloat;
 
   // Reset route selection and uniswap state when user changes tokens or amount
   useEffect(() => {
-    setSelectedRoute('samm');
     setUniswapStep('idle');
     setUniswapHash(null);
     setUniswapError(null);
+    setPreparedSepoliaData(null);
+    setUniswapQuoteData(null);
   }, [fromToken.symbol, toToken.symbol, fromValue]);
 
   // Uniswap Permit2 swap flow
@@ -617,8 +481,12 @@ const EnhancedSwapCard = () => {
     setUniswapError(null);
     setUniswapHash(null);
     try {
-      // 1. Get Permit2 signature data from backend
-      const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+      // 1. Use cached prepare result from fetchQuote; re-fetch only if somehow missing
+      let prepared = preparedSepoliaData;
+      if (!prepared) {
+        prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+        setPreparedSepoliaData(prepared);
+      }
 
       // 2. Always force-switch to Sepolia.
       // Wagmi can cache stale chain state across page refreshes — if the cached
@@ -888,15 +756,14 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Price Info */}
-          {quoteData && fromValue && (
+          {/* Price Info — SAMM route */}
+          {selectedRoute === 'samm' && quoteData && fromValue && (
             <div className="mt-4 p-3 rounded-xl bg-secondary/30 border border-border">
               <div className="flex justify-between gap-2 text-sm mb-2">
                 <span className="text-muted-foreground flex-shrink-0">Rate</span>
                 <span className="text-foreground font-mono text-xs text-right min-w-0 break-all">{getRate()}</span>
               </div>
 
-              {/* Show shard info for direct swaps */}
               {quoteData.hops === 1 && quoteData.selectedShards && quoteData.selectedShards.length > 0 && (
                 <div className="flex justify-between gap-2 text-sm mb-2">
                   <span className="text-muted-foreground flex-shrink-0">Shard</span>
@@ -904,7 +771,6 @@ const EnhancedSwapCard = () => {
                 </div>
               )}
 
-              {/* Show hops for multi-hop swaps */}
               {quoteData.hops > 1 && quoteData.route && (
                 <div className="flex justify-between gap-2 text-sm mb-2">
                   <span className="text-muted-foreground flex-shrink-0">Route</span>
@@ -912,7 +778,6 @@ const EnhancedSwapCard = () => {
                 </div>
               )}
 
-              {/* Show total fee */}
               {quoteData.totalFee && (
                 <div className="flex justify-between gap-2 text-sm mb-2">
                   <span className="text-muted-foreground flex-shrink-0">Total Fee</span>
@@ -922,19 +787,14 @@ const EnhancedSwapCard = () => {
                 </div>
               )}
 
-              {/* Price impact */}
               {priceImpact !== null && priceImpact > 0.1 && (
                 <div className="flex justify-between gap-2 text-sm">
                   <span className="text-muted-foreground flex-shrink-0">Price Impact</span>
-                  <span
-                    className={`font-mono text-xs text-right font-semibold ${
-                      priceImpact >= PRICE_IMPACT_CRITICAL
-                        ? "text-destructive"
-                        : priceImpact >= PRICE_IMPACT_WARNING
-                        ? "text-yellow-500"
-                        : "text-green-500"
-                    }`}
-                  >
+                  <span className={`font-mono text-xs text-right font-semibold ${
+                    priceImpact >= PRICE_IMPACT_CRITICAL ? "text-destructive"
+                    : priceImpact >= PRICE_IMPACT_WARNING ? "text-yellow-500"
+                    : "text-green-500"
+                  }`}>
                     {priceImpact >= PRICE_IMPACT_CRITICAL ? "⚠ " : ""}
                     {priceImpact.toFixed(2)}%
                   </span>
@@ -943,14 +803,46 @@ const EnhancedSwapCard = () => {
             </div>
           )}
 
-          {/* Route Selector — auto-selects best rate, user can override */}
-          {quoteData && (
+          {/* Price Info — Uniswap route */}
+          {selectedRoute === 'uniswap' && uniswapQuoteData && fromValue && (
+            <div className="mt-4 p-3 rounded-xl bg-secondary/30 border border-border">
+              <div className="flex justify-between gap-2 text-sm mb-2">
+                <span className="text-muted-foreground flex-shrink-0">Rate</span>
+                <span className="text-foreground font-mono text-xs text-right min-w-0 break-all">{getRate()}</span>
+              </div>
+
+              {uniswapQuoteData.gasFeeUsd && (
+                <div className="flex justify-between gap-2 text-sm mb-2">
+                  <span className="text-muted-foreground flex-shrink-0">Gas Fee</span>
+                  <span className="text-foreground font-mono text-xs text-right">
+                    ~${parseFloat(uniswapQuoteData.gasFeeUsd).toFixed(4)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between gap-2 text-sm mb-2">
+                <span className="text-muted-foreground flex-shrink-0">Routing</span>
+                <span className="text-foreground font-mono text-xs text-right">{uniswapQuoteData.routing}</span>
+              </div>
+
+              <div className="flex justify-between gap-2 text-sm">
+                <span className="text-muted-foreground flex-shrink-0">Network</span>
+                <span className="text-foreground font-mono text-xs text-right">Sepolia · Permit2</span>
+              </div>
+            </div>
+          )}
+
+          {/* Route Selector — both quotes fetched in parallel, best auto-selected, user can override */}
+          {(quoteData || uniswapQuoteData) && (
             <div className="mt-3 space-y-1.5">
               <p className="text-xs text-muted-foreground font-medium px-0.5">Select Route</p>
               <div className="grid grid-cols-2 gap-2">
                 {/* SAMM */}
                 <button
-                  onClick={() => setSelectedRoute('samm')}
+                  onClick={() => {
+                    setSelectedRoute('samm');
+                    if (quoteData?.amountOut) setToValue(quoteData.amountOut);
+                  }}
                   className={`p-2.5 rounded-xl border text-left transition-all ${
                     selectedRoute === 'samm'
                       ? 'border-primary bg-primary/10'
@@ -959,22 +851,34 @@ const EnhancedSwapCard = () => {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-foreground">SAMM</span>
-                    {(comparisonData?.winner === 'samm' ||
-                      (!comparisonLoading && quoteData && (!comparisonData || comparisonData.uniswap.amountOut === '0'))) && (
+                    {sammIsBest && (
                       <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-mono flex items-center gap-0.5">
                         <TrendingUp className="w-2.5 h-2.5" /> Best
                       </span>
                     )}
                   </div>
-                  <p className="font-mono text-sm font-bold text-foreground">
-                    {parseFloat(toValue || '0').toFixed(4)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">RiseChain</p>
+                  {loading && !quoteData ? (
+                    <p className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
+                    </p>
+                  ) : quoteData?.amountOut ? (
+                    <>
+                      <p className="font-mono text-sm font-bold text-foreground">
+                        {parseFloat(quoteData.amountOut).toFixed(4)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">RiseChain · SAMM</p>
+                    </>
+                  ) : (
+                    <p className="font-mono text-xs text-foreground/40">N/A</p>
+                  )}
                 </button>
 
-                {/* Uniswap — always selectable, rate shown when comparison data exists */}
+                {/* Uniswap */}
                 <button
-                  onClick={() => setSelectedRoute('uniswap')}
+                  onClick={() => {
+                    setSelectedRoute('uniswap');
+                    if (uniswapQuoteData?.amountOut) setToValue(uniswapQuoteData.amountOut);
+                  }}
                   className={`p-2.5 rounded-xl border text-left transition-all ${
                     selectedRoute === 'uniswap'
                       ? 'border-orange-500/70 bg-orange-500/10'
@@ -983,47 +887,45 @@ const EnhancedSwapCard = () => {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-foreground">Uniswap</span>
-                    {comparisonData?.winner === 'uniswap' && (
+                    {uniIsBest && (
                       <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/20 text-green-400 font-mono flex items-center gap-0.5">
                         <TrendingUp className="w-2.5 h-2.5" /> Best
                       </span>
                     )}
                   </div>
-                  {comparisonLoading ? (
+                  {loading && !uniswapQuoteData ? (
                     <p className="font-mono text-xs text-muted-foreground flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" /> Fetching...
                     </p>
-                  ) : comparisonData && comparisonData.uniswap.amountOut !== '0' ? (
-                    // Direct pair — comparison available
+                  ) : uniswapQuoteData?.amountOut ? (
                     <>
                       <p className="font-mono text-sm font-bold text-foreground">
-                        {parseFloat(comparisonData.uniswap.amountOut).toFixed(4)}
+                        {parseFloat(uniswapQuoteData.amountOut).toFixed(4)}
                       </p>
-                      {parseFloat(comparisonData.delta.percentage) > 0.01 && (
-                        <p className={`text-[10px] mt-0.5 font-mono ${comparisonData.winner === 'uniswap' ? 'text-green-400' : 'text-red-400/70'}`}>
-                          {comparisonData.winner === 'uniswap' ? '↓' : '↑'} {parseFloat(comparisonData.delta.percentage).toFixed(2)}% cost
+                      {uniswapQuoteData.gasFeeUsd && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Gas ~${parseFloat(uniswapQuoteData.gasFeeUsd).toFixed(2)}
                         </p>
                       )}
                       <p className="text-[10px] text-muted-foreground mt-0.5">Sepolia · Permit2</p>
                     </>
-                  ) : !isDirectSwap && quoteData ? (
-                    // Multi-hop pair — Uniswap routes internally, rate shown after prepare
-                    <>
-                      <p className="font-mono text-xs text-yellow-400/80 font-semibold">
-                        ~{parseFloat(toValue || '0').toFixed(4)}
-                      </p>
-                      <p className="text-[10px] text-yellow-500/70 mt-0.5">Multi-hop · Uniswap routes internally</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Exact rate on proceed</p>
-                    </>
+                  ) : !userAddress ? (
+                    <p className="font-mono text-[10px] text-foreground/40">Connect wallet</p>
                   ) : (
-                    // Direct pair but no comparison data (API unavailable)
-                    <>
-                      <p className="font-mono text-xs text-foreground/60">Rate N/A</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Sepolia · Permit2</p>
-                    </>
+                    <p className="font-mono text-xs text-foreground/40">N/A</p>
                   )}
                 </button>
               </div>
+
+              {/* Delta line — shown when both quotes are available */}
+              {bothQuotesReady && Math.abs(sammAmountFloat - uniAmountFloat) / Math.max(sammAmountFloat, uniAmountFloat) >= 0.0001 && (
+                <p className="text-center text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                  <TrendingUp className={`w-3 h-3 ${sammIsBest ? 'text-green-400' : 'text-orange-400'}`} />
+                  {sammIsBest
+                    ? `SAMM gives ${((sammAmountFloat - uniAmountFloat) / uniAmountFloat * 100).toFixed(2)}% more ${toToken.symbol}`
+                    : `Uniswap gives ${((uniAmountFloat - sammAmountFloat) / sammAmountFloat * 100).toFixed(2)}% more ${toToken.symbol}`}
+                </p>
+              )}
 
               {/* Sepolia info banner — shown when Uniswap route is selected */}
               {selectedRoute === 'uniswap' && uniswapStep === 'idle' && (
@@ -1036,7 +938,7 @@ const EnhancedSwapCard = () => {
                     )}
                   </p>
                   <p className="text-muted-foreground leading-relaxed">
-                    Balances shown above are your <span className="text-blue-300 font-semibold">Sepolia</span> token balances (different from RiseChain).
+                    Balances shown are your <span className="text-blue-300 font-semibold">Sepolia</span> balances.
                     You need <span className="text-blue-300 font-mono">Sepolia ETH</span> for gas.
                     Get tokens from{' '}
                     <a href="https://sepoliafaucet.com" target="_blank" rel="noopener noreferrer"
@@ -1045,20 +947,6 @@ const EnhancedSwapCard = () => {
                     </a>.
                   </p>
                 </div>
-              )}
-
-              {/* Delta line */}
-              {comparisonData && Math.abs(parseFloat(comparisonData.delta.percentage)) >= 0.01 && (
-                <p className="text-center text-[10px] text-muted-foreground flex items-center justify-center gap-1">
-                  {comparisonData.winner === 'samm' ? (
-                    <TrendingUp className="w-3 h-3 text-green-400" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3 text-orange-400" />
-                  )}
-                  {comparisonData.winner === 'samm'
-                    ? `SAMM gives ${Math.abs(parseFloat(comparisonData.delta.percentage)).toFixed(2)}% more ${toToken.symbol}`
-                    : `Uniswap gives ${Math.abs(parseFloat(comparisonData.delta.percentage)).toFixed(2)}% more ${toToken.symbol}`}
-                </p>
               )}
             </div>
           )}
