@@ -1,5 +1,5 @@
 import { ChainMetadata } from '@/types/web3';
-import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
+import { mainnet, arbitrum, optimism, polygon, base, sepolia } from 'wagmi/chains';
 import { defineChain } from 'viem';
 import type { Chain } from 'viem';
 
@@ -16,7 +16,12 @@ export const riseChain = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://testnet.riselabs.xyz'],
+      // /http suffix is the stable HTTP-only endpoint (matches the backend RPC)
+      // Falls back to root if env override is set
+      http: [
+        import.meta.env.VITE_RISECHAIN_RPC_URL || 'https://testnet.riselabs.xyz/http',
+        'https://testnet.riselabs.xyz',
+      ],
     },
   },
   blockExplorers: {
@@ -36,7 +41,7 @@ export const chainMetadata: Record<number, ChainMetadata> = {
     name: 'RiseChain',
     icon: '/assets/image/riselogo.png',
     color: 'bg-orange-500',
-    rpcUrl: riseChain.rpcUrls.default.http[0],
+    rpcUrl: import.meta.env.VITE_RISECHAIN_RPC_URL || 'https://testnet.riselabs.xyz/http',
     blockExplorer: 'https://explorer.testnet.riselabs.xyz',
     nativeCurrency: {
       name: 'Ether',
@@ -112,6 +117,21 @@ export const chainMetadata: Record<number, ChainMetadata> = {
     color: 'bg-blue-400',
     rpcUrl: base.rpcUrls.default.http[0],
     blockExplorer: 'https://basescan.org',
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+
+  // Sepolia Testnet (used for Uniswap route)
+  [sepolia.id]: {
+    id: sepolia.id,
+    name: 'Sepolia',
+    icon: 'https://assets.coingecko.com/coins/images/279/standard/ethereum.png',
+    color: 'bg-blue-500',
+    rpcUrl: 'https://rpc.sepolia.org',
+    blockExplorer: 'https://sepolia.etherscan.io',
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',

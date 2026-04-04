@@ -8,7 +8,7 @@ import {
 } from '@rainbow-me/rainbowkit/wallets';
 import { createConfig, http } from 'wagmi';
 import type { Chain } from 'viem';
-import { mainnet, arbitrum, optimism, polygon, base } from 'wagmi/chains';
+import { mainnet, arbitrum, optimism, polygon, base, sepolia } from 'wagmi/chains';
 import { riseChain } from './chains';
 
 /**
@@ -29,6 +29,7 @@ function getRpcUrl(chain: Chain): string {
     [arbitrum.id]: `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [optimism.id]: `https://opt-mainnet.g.alchemy.com/v2/${alchemyKey}`,
     [base.id]: `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`,
+    [sepolia.id]: `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`,
   };
 
   // Use Alchemy if key is available, otherwise use default public RPC
@@ -42,7 +43,7 @@ function getRpcUrl(chain: Chain): string {
 /**
  * Supported chains for the app
  */
-export const chains = [riseChain, mainnet, arbitrum, optimism, polygon, base] as const;
+export const chains = [riseChain, mainnet, arbitrum, optimism, polygon, base, sepolia] as const;
 
 /**
  * Get WalletConnect Project ID
@@ -110,6 +111,7 @@ export const wagmiConfig = createConfig({
     [optimism.id]: http(getRpcUrl(optimism)),
     [polygon.id]: http(getRpcUrl(polygon)),
     [base.id]: http(getRpcUrl(base)),
+    [sepolia.id]: http(getRpcUrl(sepolia)),
   },
   ssr: false,
   // Enable wallet detection
