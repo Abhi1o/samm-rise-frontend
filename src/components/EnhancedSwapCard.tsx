@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { commonTokens } from "@/config/tokens";
 import { useBatchSwap } from "@/hooks/useBatchSwap";
-import { getCrossPoolRouter } from "@/config/contracts";
+import { getCrossPoolRouter, hasContracts } from "@/config/contracts";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenPrice } from "@/hooks/useTokenPrice";
 import { Token as ConfigToken } from "@/types/tokens";
@@ -61,8 +61,8 @@ const EnhancedSwapCard = () => {
 
   const needsTokenApproval = !isNativeToken(fromToken.address);
 
-  // Get router address for approval
-  const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
+  // Get router address for approval (only on supported chains)
+  const routerAddress = chainId && hasContracts(chainId) ? getCrossPoolRouter(chainId) : undefined;
 
   // Create ConfigToken objects for balance/price hooks (MUST be before useBatchSwap)
   const fromTokenConfig: ConfigToken | undefined = networkTokens.find(t => t.address === fromToken.address);

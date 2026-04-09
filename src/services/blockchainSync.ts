@@ -2,7 +2,7 @@ import { PublicClient, Address, TransactionReceipt, formatUnits } from 'viem';
 import { StoredTransaction } from '@/types/transaction';
 import { transactionStorage } from './transactionStorage';
 import { getTokensForChain } from '@/config/tokens';
-import { getCrossPoolRouter } from '@/config/contracts';
+import { getCrossPoolRouter, hasContracts } from '@/config/contracts';
 
 /**
  * Service to sync transaction history from the blockchain
@@ -366,6 +366,10 @@ export class BlockchainSyncService {
     try {
       console.log('[BlockchainSync] Starting automatic sync for:', userAddress);
 
+      if (!hasContracts(chainId)) {
+        console.warn('[BlockchainSync] No contracts on chain', chainId);
+        return [];
+      }
       const routerAddress = getCrossPoolRouter(chainId);
       const syncedTransactions: StoredTransaction[] = [];
 

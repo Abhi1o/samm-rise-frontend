@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount, usePublicClient, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { Address, parseUnits, maxUint256 } from 'viem';
 import { CROSS_POOL_ROUTER_ABI } from '@/config/abis';
-import { getCrossPoolRouter } from '@/config/contracts';
+import { getCrossPoolRouter, hasContracts } from '@/config/contracts';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_DEADLINE } from '@/utils/constants';
 import { transactionStorage } from '@/services/transactionStorage';
@@ -169,6 +169,10 @@ export function useSwapExecution(): UseSwapExecutionReturn {
     async (params: SwapParams): Promise<void> => {
       if (!userAddress || !chainId) {
         throw new Error('Wallet not connected');
+      }
+
+      if (!hasContracts(chainId)) {
+        throw new Error('Please switch your wallet to RiseChain Testnet');
       }
 
       // ── Phase 1 (async): get router + on-chain quote BEFORE opening the Promise.

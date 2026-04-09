@@ -116,15 +116,40 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
     initialize();
   }, []);
 
-  // Sync with wallet chain changes
+  // Sync with wallet chain changes and auto-switch to RiseChain if on wrong network
   useEffect(() => {
     if (!walletChainId || !availableNetworks.length) return;
 
     const walletNetwork = availableNetworks.find(n => n.chainId === walletChainId);
-    if (walletNetwork && walletNetwork.chainId !== selectedNetwork?.chainId) {
-      console.log('Wallet switched to:', walletNetwork.displayName);
-      setSelectedNetwork(walletNetwork);
-      localStorage.setItem(NETWORK_STORAGE_KEY, walletNetwork.chainId.toString());
+    if (walletNetwork) {
+      if (walletNetwork.chainId !== selectedNetwork?.chainId) {
+        console.log('Wallet switched to:', walletNetwork.displayName);
+        setSelectedNetwork(walletNetwork);
+        localStorage.setItem(NETWORK_STORAGE_KEY, walletNetwork.chainId.toString());
+      }
+    } else {
+      // Wallet is on an unsupported chain — auto-switch to RiseChain
+      console.log(`Wallet on unsupported chain ${walletChainId}, switching to RiseChain...`);
+      if (switchChain) {
+        switchChain(
+          { chainId: riseChain.id },
+          {
+            onSuccess: () => {
+              toast({
+                title: 'Network Switched',
+                description: 'Automatically switched to RiseChain Testnet',
+              });
+            },
+            onError: () => {
+              toast({
+                title: 'Wrong Network',
+                description: 'Please switch your wallet to RiseChain Testnet to use this app.',
+                variant: 'destructive',
+              });
+            },
+          }
+        );
+      }
     }
   }, [walletChainId, availableNetworks, selectedNetwork]);
 
@@ -148,7 +173,7 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
       // If wallet is connected, request switch
       if (switchChain && walletChainId !== chainId) {
         try {
-          await switchChain({ chainId });
+          switchChain({ chainId });
           toast({
             title: 'Network Switched',
             description: `Switched to ${targetNetwork.displayName}`,

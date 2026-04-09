@@ -3,7 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagm
 import { Address, parseUnits } from 'viem';
 import { useTokenApproval } from './useTokenApproval';
 import { SAMMPoolFactoryABI } from '@/config/abis';
-import { getFactory } from '@/config/contracts';
+import { getFactory, hasContracts } from '@/config/contracts';
 import { GAS_LIMITS } from '@/utils/constants';
 import { Token } from '@/types/tokens';
 import { useToast } from './use-toast';
@@ -80,8 +80,8 @@ export function useBatchCreatePool(params: UseBatchCreatePoolParams): UseBatchCr
     reject: (error: any) => void;
   } | null>(null);
 
-  // Get factory address
-  const factoryAddress = chainId ? getFactory(chainId) : undefined;
+  // Get factory address (only on supported chains)
+  const factoryAddress = chainId && hasContracts(chainId) ? getFactory(chainId) : undefined;
 
   // Convert string amounts to bigint
   const amount0Needed = useMemo(() => {

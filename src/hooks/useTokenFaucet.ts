@@ -1,7 +1,7 @@
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
 import { Address } from 'viem';
 import { TOKEN_FAUCET_ABI } from '@/config/abis';
-import { getTokenFaucet } from '@/config/contracts';
+import { getTokenFaucet, hasContracts } from '@/config/contracts';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useRef } from 'react';
 
@@ -22,7 +22,7 @@ export function useTokenFaucet() {
   const { toast } = useToast();
   const { address: userAddress } = useAccount();
   const chainId = useChainId();
-  const faucetAddress = getTokenFaucet(chainId);
+  const faucetAddress = hasContracts(chainId) ? getTokenFaucet(chainId) : undefined;
   const successToastShown = useRef<string | null>(null);
 
   // Check if user can request tokens
@@ -177,6 +177,7 @@ export function useTokenFaucet() {
       return;
     }
 
+    // @ts-ignore - wagmi v2 type inference
     request({
       address: faucetAddress,
       abi: TOKEN_FAUCET_ABI,

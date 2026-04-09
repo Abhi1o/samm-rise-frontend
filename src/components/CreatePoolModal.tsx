@@ -18,7 +18,7 @@ import { ErrorModal } from "@/components/ErrorModal";
 import { PreTransactionChecklist, ChecklistItem } from "@/components/PreTransactionChecklist";
 import { parseUnits, parseEther } from "viem";
 import { Address } from "viem";
-import { getFactory } from "@/config/contracts";
+import { getFactory, hasContracts } from "@/config/contracts";
 import { useNavigate } from "react-router-dom";
 
 interface CreatePoolModalProps {
@@ -92,7 +92,7 @@ const CreatePoolModal = ({ isOpen, onClose }: CreatePoolModalProps) => {
   const networkValidation = useNetworkValidation();
 
   // Get factory address
-  const factoryAddress = selectedNetwork?.chainId ? getFactory(selectedNetwork.chainId) as Address : undefined;
+  const factoryAddress = selectedNetwork?.chainId && hasContracts(selectedNetwork.chainId) ? getFactory(selectedNetwork.chainId) as Address : undefined;
 
   // Pool existence check
   const poolExistence = usePoolExistence({

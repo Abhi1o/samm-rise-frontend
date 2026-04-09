@@ -5,7 +5,7 @@ import { useTokenApproval } from './useTokenApproval';
 import { useSwapExecution } from './useSwapExecution';
 import { BatchSwapStep, ProgressStep, UseBatchSwapReturn } from '@/types/batch';
 import { Token } from '@/types/tokens';
-import { getCrossPoolRouter } from '@/config/contracts';
+import { getCrossPoolRouter, hasContracts } from '@/config/contracts';
 import {parseError, isUserRejection} from '@/utils/errorParser';
 
 
@@ -30,8 +30,8 @@ export function useBatchSwap(params: UseBatchSwapParams): UseBatchSwapReturn {
   const [currentStep, setCurrentStep] = useState<BatchSwapStep>('idle');
   const [error, setError] = useState<Error | undefined>();
 
-  // Get router address for approvals
-  const routerAddress = chainId ? getCrossPoolRouter(chainId) : undefined;
+  // Get router address for approvals (only on supported chains)
+  const routerAddress = chainId && hasContracts(chainId) ? getCrossPoolRouter(chainId) : undefined;
 
   // Convert amountIn string to bigint for the allowance check.
   // quoteData.amountIn is a formatted decimal (e.g. "11.255641").

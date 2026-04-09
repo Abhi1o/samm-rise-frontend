@@ -1,3 +1,4 @@
+import React from "react";
 import { Helmet } from "react-helmet-async";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -439,7 +440,7 @@ const Pools = () => {
 
                   {/* Pools List */}
                   {!isLoading && !error && filteredPools.map((pool, index) => (
-                  <>
+                  <React.Fragment key={pool.id || pool.address || index}>
                     {/* Mobile Card - visible on small screens only */}
                     <div
                       className="md:hidden px-4 py-4 border-b border-border/50 hover:bg-secondary/20 transition-colors cursor-pointer animate-fade-in"
@@ -646,7 +647,7 @@ const Pools = () => {
                         </div>
                       </div>
                     )}
-                  </>
+                  </React.Fragment>
                   ))}
                 </>
               ) : (
