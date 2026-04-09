@@ -487,7 +487,13 @@ class SAMMApiService {
 
   // ── Uniswap Sepolia Permit2 Swap ────────────────────────────────────────────
 
-  async prepareSepolia(tokenIn: string, tokenOut: string, amount: string, userAddress: string): Promise<{
+  async prepareSepolia(
+    tokenIn: string, 
+    tokenOut: string, 
+    amount: string, 
+    userAddress: string,
+    type: 'EXACT_INPUT' | 'EXACT_OUTPUT' = 'EXACT_INPUT'
+  ): Promise<{
     quote: any;
     permitData?: any;
     routing: string;
@@ -499,7 +505,7 @@ class SAMMApiService {
     const response = await fetch(`${this.baseUrl}/swap/sepolia/prepare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userAddress, tokenIn, tokenOut, amount }),
+      body: JSON.stringify({ userAddress, tokenIn, tokenOut, amount, type }),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));

@@ -72,17 +72,19 @@ export function NetworkProvider({ children }: NetworkProviderProps) {
     localStorage.setItem(NETWORK_STORAGE_KEY, networks[0].chainId.toString());
   }, []);
 
-  // Sync with wallet chain changes
+  // Sync selectedNetwork whenever the wallet's active chain changes.
+  // selectedNetwork is intentionally excluded from deps — including it would cause
+  // a circular update: switchNetwork() sets selectedNetwork optimistically, which
+  // re-fires this effect and immediately reverts it because the wallet hasn't
+  // switched yet. walletChainId is the single source of truth.
   useEffect(() => {
     if (!walletChainId || !availableNetworks.length) return;
-
     const walletNetwork = availableNetworks.find(n => n.chainId === walletChainId);
-    if (walletNetwork && walletNetwork.chainId !== selectedNetwork?.chainId) {
-      console.log('Wallet switched to:', walletNetwork.displayName);
+    if (walletNetwork) {
       setSelectedNetwork(walletNetwork);
       localStorage.setItem(NETWORK_STORAGE_KEY, walletNetwork.chainId.toString());
     }
-  }, [walletChainId, availableNetworks, selectedNetwork]);
+  }, [walletChainId, availableNetworks.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Switch network function
   const switchNetwork = async (chainId: number) => {

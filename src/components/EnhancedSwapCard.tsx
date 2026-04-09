@@ -351,14 +351,23 @@ const EnhancedSwapCard = () => {
     };
 
     // ── Helper: Uniswap (Sepolia) quote ─────────────────────────────────────
-    // Effective decimals = fromToken.decimals + toToken.decimals (Uniswap API scaling)
+    // Use EXACT_INPUT mode (user specifies input amount)
+    // But validate against /compare endpoint which uses EXACT_OUTPUT (more reliable on Sepolia)
     const doUniswapFetch = async (): Promise<string | null> => {
       if (!userAddress) return null;
       try {
-        const prepared = await sammApi.prepareSepolia(fromToken.symbol, toToken.symbol, fromValue, userAddress);
+        // Get quote using EXACT_INPUT (user enters input amount)
+        const prepared = await sammApi.prepareSepolia(
+          fromToken.symbol, 
+          toToken.symbol, 
+          fromValue,
+          userAddress,
+          'EXACT_INPUT'  // User specifies input amount
+        );
+        
         const outputRaw: string = prepared.quote?.output?.amount ?? '0';
-        // Output amount is in the output token's decimals (not sum of both tokens)
         const outputAmount = parseFloat(formatUnits(BigInt(outputRaw), toToken.decimals));
+        
         setPreparedSepoliaData(prepared);
         setUniswapQuoteData({
           amountOut: outputAmount.toFixed(6),
@@ -507,28 +516,49 @@ const EnhancedSwapCard = () => {
       // 3. ERC-20 one-time approval for Permit2 contract (if required)
       // The backend signals this via needsTokenApproval. This is a one-time tx per token.
       // Uses prepared.tokenIn (Sepolia ERC-20 address) — NOT fromToken.address (RiseChain address).
+      // CRITICAL FIX: Check current allowance before attempting approval to avoid unnecessary transactions
       if (prepared.needsTokenApproval && prepared.permit2Address && prepared.tokenIn) {
-        setUniswapStep('approving');
-        const ERC20_APPROVE_ABI = [
-          {
-            name: 'approve',
-            type: 'function',
-            stateMutability: 'nonpayable',
-            inputs: [
-              { name: 'spender', type: 'address' },
-              { name: 'amount', type: 'uint256' },
-            ],
-            outputs: [{ name: '', type: 'bool' }],
-          },
-        ] as const;
-        // @ts-ignore — wagmi v2 type inference issue with inline const ABI + chainId
-        await writeContractAsync({
-          address: prepared.tokenIn as `0x${string}`,
-          abi: ERC20_APPROVE_ABI,
-          functionName: 'approve',
-          args: [prepared.permit2Address as `0x${string}`, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
-          chainId: 11155111,
-        });
+        // Check current allowance first
+        // @ts-ignore — viem version type mismatch with authorizationList
+        const currentAllowance = await sepoliaPublicClient!.readContract({
+          address: prepared.tokenIn as Address,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [userAddress as Address, prepared.permit2Address as Address],
+        }) as bigint;
+
+        // Parse the input amount from the quote to compare with allowance
+        // The quote.input.amount contains the input amount in wei
+        const inputAmountWei = BigInt(prepared.quote?.input?.amount || '0');
+
+        // Only approve if current allowance is insufficient
+        if (currentAllowance < inputAmountWei) {
+          console.log(`[Uniswap] Token approval needed. Current: ${currentAllowance.toString()}, Required: ${inputAmountWei.toString()}`);
+          setUniswapStep('approving');
+          const ERC20_APPROVE_ABI = [
+            {
+              name: 'approve',
+              type: 'function',
+              stateMutability: 'nonpayable',
+              inputs: [
+                { name: 'spender', type: 'address' },
+                { name: 'amount', type: 'uint256' },
+              ],
+              outputs: [{ name: '', type: 'bool' }],
+            },
+          ] as const;
+          // @ts-ignore — wagmi v2 type inference issue with inline const ABI + chainId
+          await writeContractAsync({
+            address: prepared.tokenIn as `0x${string}`,
+            abi: ERC20_APPROVE_ABI,
+            functionName: 'approve',
+            args: [prepared.permit2Address as `0x${string}`, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
+            chainId: 11155111,
+          });
+          console.log('[Uniswap] Token approved for Permit2');
+        } else {
+          console.log(`[Uniswap] Token already approved. Allowance: ${currentAllowance.toString()}`);
+        }
       }
 
       // 4. Sign permit data (if present — native ETH swaps may not need it)
@@ -563,23 +593,41 @@ const EnhancedSwapCard = () => {
       setUniswapHash(hash);
       setUniswapStep('success');
 
-      // Refresh Sepolia balances — increment tick to re-trigger the balance useEffect
+      // Show success toast with transaction hash
+      toast({
+        title: "Swap Successful!",
+        description: (
+          <div className="flex flex-col gap-2">
+            <p>Your Uniswap swap on Sepolia completed successfully.</p>
+            <a
+              href={`https://sepolia.etherscan.io/tx/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline text-sm font-mono truncate"
+            >
+              View on Etherscan →
+            </a>
+          </div>
+        ),
+      });
+
+      // Refresh Sepolia balances
       setSepoliaRefreshTick(t => t + 1);
 
-      // Auto-switch wallet back to RiseChain so the user can continue using SAMM
-      try {
-        await switchChainAsync({ chainId: riseChain.id });
-      } catch {
-        // User dismissed the switch — harmless, they can switch manually
-      }
+      // Silently attempt to switch the wallet back to RiseChain.
+      // If the user dismisses the MetaMask prompt, the Done button will retry.
+      switchChainAsync({ chainId: riseChain.id }).catch(() => {
+        // non-fatal — Done button provides a second chance
+      });
     } catch (err: any) {
       console.error('[Uniswap] Swap failed:', err);
       setUniswapError(err.message || 'Uniswap swap failed');
       setUniswapStep('error');
-      // If swap failed (not just a chain switch error), try to restore RiseChain
-      if (chainId !== riseChain.id) {
-        try { await switchChainAsync({ chainId: riseChain.id }); } catch { /* ignore */ }
-      }
+      toast({
+        title: 'Swap Failed',
+        description: err.message || 'Uniswap swap failed. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -1209,31 +1257,70 @@ const EnhancedSwapCard = () => {
             <div className="mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
               <div className="flex items-start gap-3 mb-3">
                 <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-base font-bold text-green-500 mb-1">Uniswap Swap Successful!</h3>
-                  <p className="text-sm text-muted-foreground">Executed on Sepolia via Permit2</p>
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-green-500 mb-1">Swap Successful!</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your Uniswap swap on Sepolia completed successfully
+                  </p>
                 </div>
               </div>
+
+              {/* Transaction Hash */}
               {uniswapHash && (
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${uniswapHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-2 rounded-lg bg-secondary/30 border border-border/50 text-xs font-mono text-primary hover:underline truncate mb-3"
-                >
-                  {uniswapHash}
-                </a>
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground font-semibold">Transaction Hash:</p>
+                  <div className="p-2 rounded-lg bg-secondary/30 border border-border/50">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-xs font-mono text-foreground flex-1 truncate"
+                        title={uniswapHash}
+                      >
+                        {uniswapHash.slice(0, 20)}...{uniswapHash.slice(-8)}
+                      </span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(uniswapHash || '');
+                          toast({ title: "Copied!", description: "Transaction hash copied to clipboard" });
+                        }}
+                        className="text-xs text-primary hover:text-primary/80 flex-shrink-0"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${uniswapHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 w-full text-xs text-orange-400 hover:text-orange-300 transition-colors font-medium py-1"
+                  >
+                    View on Sepolia Etherscan →
+                  </a>
+                </div>
               )}
               <Button
-                onClick={() => {
+                onClick={async () => {
+                  // Reset all Uniswap state
                   setUniswapStep('idle');
                   setUniswapHash(null);
+                  setUniswapError(null);
                   setFromValue('');
                   setToValue('');
                   setQuoteData(null);
+                  setUniswapQuoteData(null);
+                  setPreparedSepoliaData(null);
                   setRouteInfo('');
+                  // Switch route badge back to SAMM immediately (header updates instantly)
+                  setSelectedRoute('samm');
+                  // Switch wallet to RiseChain — NetworkContext sync effect will update
+                  // selectedNetwork automatically when walletChainId changes
+                  try {
+                    await switchChainAsync({ chainId: riseChain.id });
+                  } catch {
+                    // User dismissed — they can switch manually; route badge is already correct
+                  }
                 }}
-                className="w-full"
+                className="w-full mt-3"
                 variant="default"
               >
                 Done
@@ -1243,15 +1330,47 @@ const EnhancedSwapCard = () => {
 
           {/* Uniswap — Error */}
           {selectedRoute === 'uniswap' && uniswapStep === 'error' && (
-            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
-              <div className="flex items-start gap-3 mb-3">
+            <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 min-w-0">
+              <div className="flex items-start gap-3 mb-3 min-w-0">
                 <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-base font-bold text-destructive mb-1">Uniswap Swap Failed</h3>
-                  <p className="text-sm text-muted-foreground break-words">{uniswapError || 'Unknown error'}</p>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-destructive mb-1">Transaction Failed</h3>
+                  <p
+                    className="text-sm text-muted-foreground min-w-0"
+                    style={{
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word'
+                    }}
+                  >
+                    {uniswapError || 'An error occurred while processing your Uniswap swap'}
+                  </p>
+                  {uniswapHash && (
+                    <a
+                      href={`https://sepolia.etherscan.io/tx/${uniswapHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors"
+                    >
+                      View failed tx on Sepolia Etherscan →
+                    </a>
+                  )}
                 </div>
               </div>
-              <Button onClick={() => setUniswapStep('idle')} className="w-full" variant="destructive">
+              <Button
+                onClick={async () => {
+                  setUniswapStep('idle');
+                  setUniswapError(null);
+                  setUniswapHash(null);
+                  // Reset route badge (header updates instantly)
+                  setSelectedRoute('samm');
+                  // Switch wallet back to RiseChain
+                  try {
+                    await switchChainAsync({ chainId: riseChain.id });
+                  } catch { /* ignore — badge already correct */ }
+                }}
+                className="w-full"
+                variant="destructive"
+              >
                 Try Again
               </Button>
             </div>
